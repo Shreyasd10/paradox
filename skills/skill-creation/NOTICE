@@ -1,0 +1,8 @@
+This skill-creation skill is adapted from Factory-AI's factory-plugins
+`droid-evolved/skills/skill-creation` skill.
+
+Original project: https://github.com/Factory-AI/factory-plugins
+Source path: plugins/droid-evolved/skills/skill-creation/SKILL.md
+
+The adapted files in this directory are integrated with my-workflow-2's
+runtime-neutral skill catalog and validation conventions.

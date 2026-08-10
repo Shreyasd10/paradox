@@ -1,0 +1,74 @@
+{
+  "name": "@shreyasdevadiga/pi-workflows",
+  "version": "0.1.0",
+  "description": "Atomic workflows as a pi extension: DAG-driven, resumable multi-stage workflow execution for stock pi.",
+  "author": "shreyasdevadiga",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shreyasd10/pi-workflows.git"
+  },
+  "homepage": "https://github.com/Shreyasd10/pi-workflows#readme",
+  "bugs": {
+    "url": "https://github.com/Shreyasd10/pi-workflows/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "workflow",
+    "orchestration",
+    "dag",
+    "agent"
+  ],
+  "main": "./src/index.ts",
+  "types": "./src/authoring.ts",
+  "exports": {
+    ".": {
+      "types": "./src/authoring.ts",
+      "default": "./src/index.ts"
+    },
+    "./builtin": {
+      "types": "./builtin/index.d.ts",
+      "default": "./builtin/index.ts"
+    },
+    "./builtin/*": {
+      "types": "./builtin/*.d.ts",
+      "default": "./builtin/*.ts"
+    }
+  },
+  "files": [
+    "src/**/*.ts",
+    "src/**/*.mjs",
+    "builtin/**/*.ts",
+    "builtin/**/*.d.ts",
+    "skills/**/*",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/extension/index.bundle.mjs"
+    ],
+    "builtin": [
+      "./builtin"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": []
+  },
+  "dependencies": {
+    "@bastani/atomic": "0.9.12",
+    "jiti": "^2.7.0",
+    "typebox": "^1.3.7"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --import jiti/register --test test/**/*.test.ts"
+  }
+}

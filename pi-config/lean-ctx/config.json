@@ -1,0 +1,8 @@
+{
+  "mode": "replace",
+  "managedBy": "paradox",
+  "env": {
+    "LEAN_CTX_COMPRESSION_LEVEL": "lite",
+    "LEAN_CTX_SAVINGS_FOOTER": "never"
+  }
+}

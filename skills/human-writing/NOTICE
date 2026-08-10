@@ -1,0 +1,11 @@
+This human-writing skill is adapted from Factory-AI's factory-plugins
+`droid-evolved/skills/human-writing` skill.
+
+Original project: https://github.com/Factory-AI/factory-plugins
+Source path: plugins/droid-evolved/skills/human-writing/SKILL.md
+
+The guidance is based on Wikipedia's "Signs of AI writing" page:
+https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+
+The adapted files in this directory are integrated with my-workflow-2's
+runtime-neutral skill catalog and validation conventions.

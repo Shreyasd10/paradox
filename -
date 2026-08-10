@@ -1,0 +1,6 @@
+{
+  "mode": "replace",
+  "managedBy": "/opt/homebrew/bin/lean-ctx",
+  "binary": "/tmp/paradox-test/.pi/agent/extensions/pi-lean-ctx/config.json",
+  "env": {}
+}

@@ -1,0 +1,23 @@
+{
+  "theme": "grok-dark",
+  "quietStartup": true,
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultThinkingLevel": "max",
+  "enabledModels": [
+    "minimax/*",
+    "openai-codex/*"
+  ],
+  "hideThinkingBlock": false,
+  "subagents": {
+    "agentOverrides": {
+      "context-builder": { "disabled": true },
+      "oracle": { "disabled": true },
+      "planner": { "disabled": true },
+      "researcher": { "disabled": true },
+      "reviewer": { "disabled": true },
+      "scout": { "disabled": true },
+      "worker": { "disabled": true }
+    }
+  }
+}

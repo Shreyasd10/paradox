@@ -1,0 +1,38 @@
+# Paradox template — shell allowlist + allowed paths. Paths are examples; adjust per machine.
+allow_paths = [
+    "/Users/shreyasdevadiga/Desktop/workspace",
+    "/Users/shreyasdevadiga/.cursor/plans",
+]
+
+shell_allowlist_extra = [
+    "pi",
+    "install.sh",
+    "docker",
+    "tb",
+    "run_dry.sh",
+    "run_dry_bg.sh",
+    "kill",
+    "run_trace.sh",
+    "run_trace2.sh",
+    "run_trace3.sh",
+    "build_tarball.sh",
+    "run_validation.sh",
+    "run_sweep.sh",
+    "run_vanilla.sh",
+    "run_hard.sh",
+    "build_arm_tarball.sh",
+    "run_arm.sh",
+    "sh",
+    "bash",
+    "cage",
+    "evalt",
+    "humanlayer",
+]
+
+[updates]
+auto_update = true
+check_interval_hours = 6
+notify_only = false
+
+[gain]
+last_auto_publish = "2026-08-10T11:24:49.259036+00:00"

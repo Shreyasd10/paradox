@@ -1,0 +1,54 @@
+{
+  "name": "@shreyasdevadiga/pi-grok-style-tools",
+  "version": "0.1.0",
+  "description": "Grok Build–style TUI for Pi — GrokNight theme, braille spinner, ◆ tools, turn-status, footer chrome, prompt box",
+  "author": "shreyasdevadiga",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "grok",
+    "grok-build",
+    "tool-renderer",
+    "tui"
+  ],
+  "files": [
+    "src",
+    "scripts",
+    "theme",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "atomic:patch": "node ./scripts/patch-atomic-grok-ui.mjs apply && node ./scripts/install-atomic-wrapper.mjs install",
+    "atomic:check": "node ./scripts/patch-atomic-grok-ui.mjs check && node ./scripts/install-atomic-wrapper.mjs check",
+    "atomic:rollback": "node ./scripts/patch-atomic-grok-ui.mjs rollback && node ./scripts/install-atomic-wrapper.mjs uninstall",
+    "atomic:wrapper": "node ./scripts/install-atomic-wrapper.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shikijs/cli": "^4.0.2",
+    "diff": "^9.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts",
+      "./src/spinner.ts",
+      "./src/chrome.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

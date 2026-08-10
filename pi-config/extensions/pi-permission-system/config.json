@@ -1,0 +1,138 @@
+{
+  "$schema": "https://raw.githubusercontent.com/gotgenes/pi-packages/main/packages/pi-permission-system/schemas/permissions.schema.json",
+
+  "debugLog": false,
+  "permissionReviewLog": true,
+  "yoloMode": false,
+
+  "toolInputPreviewMaxLength": 400,
+  "toolTextSummaryMaxLength": 120,
+
+  "piInfrastructureReadPaths": [
+    "/opt/homebrew/**/@earendil-works/pi-coding-agent/**",
+    "/usr/local/**/@earendil-works/pi-coding-agent/**",
+    "~/.npm-global/**/@earendil-works/**",
+    "~/.pi/agent/extensions/**",
+    "~/.pi/agent/skills/**"
+  ],
+
+  "permission": {
+    "*": "allow",
+
+    "path": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow",
+      ".envrc": "deny",
+      "~/.ssh/*": "deny",
+      "~/.aws/*": "deny",
+      "~/.gnupg/*": "deny",
+      "~/.kube/config": "deny",
+      "**/id_rsa": "deny",
+      "**/id_ed25519": "deny",
+      "**/*.pem": "deny",
+      "**/*.key": "deny"
+    },
+
+    "read": "allow",
+    "grep": "allow",
+    "find": "allow",
+    "ls": "allow",
+
+    "write": "ask",
+    "edit": "ask",
+
+    "task": "allow",
+    "mcp": { "*": "ask", "mcp_status": "allow", "mcp_list": "allow", "mcp_search": "allow", "mcp_describe": "allow" },
+    "skill": "allow",
+
+    "external_directory": "allow",
+
+    "bash": {
+      "*": "allow",
+
+      "rm -rf *": "ask",
+      "rm -fr *": "ask",
+      "rm -f -r *": "ask",
+      "rm --recursive *": "ask",
+      "rm -r *": "ask",
+      "rm * -rf": "ask",
+      "rm * -fr": "ask",
+      "find * -delete": "ask",
+      "find * -exec rm *": "ask",
+
+      "sudo *": "ask",
+      "su *": "ask",
+
+      "chmod -R *": "ask",
+      "chmod 777 *": "ask",
+      "chmod * 777 *": "ask",
+      "chown -R *": "ask",
+      "chown *": "ask",
+
+      "dd *": "ask",
+      "mkfs *": "ask",
+      "mkfs.* *": "ask",
+      "fdisk *": "ask",
+      "parted *": "ask",
+      "format *": "ask",
+
+      "shutdown *": "ask",
+      "reboot *": "ask",
+      "halt *": "ask",
+      "poweroff *": "ask",
+      "init *": "ask",
+
+      "iptables *": "ask",
+      "ip6tables *": "ask",
+      "nft *": "ask",
+      "ufw *": "ask",
+
+      "systemctl stop *": "ask",
+      "systemctl disable *": "ask",
+      "systemctl mask *": "ask",
+      "launchctl unload *": "ask",
+
+      "npm uninstall *": "ask",
+      "pnpm remove *": "ask",
+      "yarn remove *": "ask",
+      "pip uninstall *": "ask",
+      "pip3 uninstall *": "ask",
+      "brew uninstall *": "ask",
+      "apt remove *": "ask",
+      "apt-get remove *": "ask",
+      "apt purge *": "ask",
+      "pacman -R *": "ask",
+      "yum remove *": "ask",
+      "dnf remove *": "ask",
+      "apk del *": "ask",
+
+      "git push --force *": "ask",
+      "git push -f *": "ask",
+      "git push --force-with-lease *": "allow",
+      "git reset --hard *": "ask",
+      "git reset --hard": "ask",
+      "git clean -fd *": "ask",
+      "git clean -f *": "ask",
+      "git clean -fdx *": "ask",
+      "git branch -D *": "ask",
+      "git branch --delete --force *": "ask",
+
+      "kill -9 *": "ask",
+      "kill -SIGKILL *": "ask",
+      "pkill -9 *": "ask",
+      "killall *": "ask",
+
+      "mv * /*": "ask",
+      "cp -r * /*": "ask",
+
+      "crontab -r *": "ask",
+      "crontab *": "ask",
+
+      "xattr -d *": "ask",
+      "diskutil *": "ask",
+      "defaults delete *": "ask"
+    }
+  }
+}

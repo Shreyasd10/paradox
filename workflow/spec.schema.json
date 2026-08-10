@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paradox.local/schemas/workflow-spec.schema.json",
+  "title": "Canonical Workflow Specification",
+  "description": "Runtime-neutral contract for one user-facing workflow capability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "summary",
+    "inputs",
+    "outputs",
+    "checkpoints",
+    "evidence",
+    "transitions",
+    "side_effect_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/io"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/io"
+      }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/checkpoint"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    },
+    "side_effect_policy": {
+      "$ref": "#/$defs/sideEffectPolicy"
+    }
+  },
+  "$defs": {
+    "io": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "required"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "artifact_family": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "owner", "when", "decision"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "owner": {
+          "enum": ["user", "workflow"]
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "required"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "source": {
+          "enum": ["repository", "command", "artifact", "user", "runtime"]
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "condition"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "sideEffectPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "allowed", "forbidden", "user_owned"],
+      "properties": {
+        "default": {
+          "const": "deny"
+        },
+        "allowed": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "forbidden": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "create-branch",
+              "create-worktree",
+              "stage",
+              "commit",
+              "push",
+              "create-pull-request",
+              "update-pull-request",
+              "merge-pull-request"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "commit"
+              }
+            },
+            {
+              "contains": {
+                "const": "push"
+              }
+            }
+          ]
+        },
+        "user_owned": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

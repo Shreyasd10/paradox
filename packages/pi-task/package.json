@@ -1,0 +1,54 @@
+{
+  "name": "@shreyasdevadiga/pi-task",
+  "version": "0.1.1",
+  "description": "Pi-native subagent framework: one task tool with isolated child sessions, background/resume, and Grok Build–style TUI.",
+  "author": "shreyasdevadiga",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shreyasd10/pi-task.git"
+  },
+  "homepage": "https://github.com/Shreyasd10/pi-task#readme",
+  "bugs": {
+    "url": "https://github.com/Shreyasd10/pi-task/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "subagent",
+    "task",
+    "agent",
+    "orchestration"
+  ],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": ">=0.80.0",
+    "@earendil-works/pi-ai": ">=0.80.0",
+    "@earendil-works/pi-coding-agent": ">=0.80.0",
+    "@earendil-works/pi-tui": ">=0.80.0",
+    "typebox": "*"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

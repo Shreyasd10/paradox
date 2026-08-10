@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paradox.local/schemas/artifact-link.schema.json",
+  "title": "Portable Workflow Artifact Link",
+  "description": "Shared identity, authority, status, and lineage metadata for repository-local workflow artifacts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "family",
+    "path",
+    "authority",
+    "status",
+    "lineage"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]*:[a-z0-9][a-z0-9._-]*$"
+    },
+    "family": {
+      "enum": [
+        "research",
+        "brainstorm",
+        "prd",
+        "plan",
+        "outline",
+        "execution-ledger",
+        "verification",
+        "solution",
+        "handoff"
+      ]
+    },
+    "kind": {
+      "enum": ["feature", "bug"]
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^docs/[A-Za-z0-9._/-]+$"
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "scope"],
+      "properties": {
+        "owner": {
+          "enum": ["user", "workflow", "validation"]
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supersedes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9.-]*:[a-z0-9][a-z0-9._-]*$"
+          }
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "owner", "updated_at", "evidence"],
+      "properties": {
+        "status": {
+          "enum": ["awaiting-approval", "approved"]
+        },
+        "owner": {
+          "const": "user"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "enum": ["request", "ticket"]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source_request": {
+      "type": "string"
+    },
+    "implementation_evidence": {
+      "type": "string"
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checked_at", "repository_state", "status"],
+      "properties": {
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "repository_state": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["fresh", "stale"]
+        }
+      }
+    },
+    "continuation_point": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "enum": ["low", "medium", "high"]
+    },
+    "status": {
+      "enum": ["draft", "awaiting-approval", "approved", "active", "complete", "superseded", "blocked", "failed"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lineage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relation", "artifact_id", "path"],
+        "properties": {
+          "relation": {
+            "enum": ["derived-from", "implements", "validates", "continues", "supersedes", "learned-from"]
+          },
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9.-]*:[a-z0-9][a-z0-9._-]*$"
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^docs/[A-Za-z0-9._/-]+$"
+          },
+          "required_status": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
