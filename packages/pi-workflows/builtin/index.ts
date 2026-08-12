@@ -11,6 +11,8 @@ export { default as fanOutAndSynthesize } from "./fan-out-and-synthesize.js";
 export { default as generateAndFilter } from "./generate-and-filter.js";
 export { default as goal } from "./goal.js";
 export { default as openClaudeDesign } from "./open-claude-design.js";
+export { default as prdOriented } from "../workflows/prd-oriented/index.js";
 export { default as loopUntilDone } from "./loop-until-done.js";
 export { default as ralph } from "./ralph.js";
+export { default as rpi } from "../workflows/rpi/index.js";
 export { default as tournament } from "./tournament.js";

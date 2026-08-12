@@ -61,10 +61,7 @@
     "skills": [
       "./skills"
     ],
-    "prompts": [],
-    "workflows": [
-      "./workflows/*/index.ts"
-    ]
+    "prompts": []
   },
   "dependencies": {
     "@bastani/atomic": "0.9.12",

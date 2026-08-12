@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { workflow } from "@bastani/workflows";
+import { workflow } from "../../src/authoring/workflow.js";
 import { createDeliveryHost, runDeliveryGraph } from "../shared/verbatim-skill-runner.js";
 import { prdOrientedGraph } from "./graph.js";
 

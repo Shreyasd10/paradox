@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { discoverWorkflows } from "../src/extension/discovery.js";
+import { discoverStartupWorkflowsSync } from "../src/extension/discovery.js";
 import { assertAllWorkflowAssets, lockedAsset, lockedAssetEntries, verbatimSkill } from "../workflows/shared/asset-loader.js";
 import {
 	assertPiTaskPrerequisites,
@@ -20,19 +20,9 @@ import {
 } from "../workflows/shared/verbatim-skill-runner.js";
 
 describe("custom delivery workflows", () => {
-	test("discovers the packaged RPI and PRD-Oriented workflows", async () => {
-		const result = await discoverWorkflows({
-			cwd: process.cwd(),
-			agentDirs: [],
-			includeBundled: false,
-			packageWorkflowPaths: [
-				join(process.cwd(), "workflows/rpi/index.ts"),
-				join(process.cwd(), "workflows/prd-oriented/index.ts"),
-			],
-		});
-
-		assert.deepEqual(result.errors, []);
-		assert.deepEqual(result.registry.names().sort(), ["prd-oriented", "rpi"]);
+	test("registers RPI and PRD-Oriented in the live bundled startup catalog", () => {
+		const result = discoverStartupWorkflowsSync();
+		assert.equal(result.registry.names().length, 11);
 
 		for (const name of ["rpi", "prd-oriented"]) {
 			const definition = result.registry.get(name);
