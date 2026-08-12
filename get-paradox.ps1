@@ -109,7 +109,6 @@ Write-Host "--------------------------------------------------"
 
 $installArgs = @("-Scope", "global")
 if ($DryRun) { $installArgs += "-DryRun" }
-if ($NoVerify) { $installArgs += "-NoVerify" }
 if ($NoExtensions) { $installArgs += "-NoExtensions" }
 if ($NoLeanCtx) { $installArgs += "-NoLeanCtx" }
 if ($WithAgentmemory) { $installArgs += "-WithAgentmemory" }

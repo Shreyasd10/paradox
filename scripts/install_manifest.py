@@ -350,6 +350,15 @@ def uninstall_manifest(path: str | Path) -> None:
     manifest_path.unlink(missing_ok=True)
 
 
+def owned_targets(path: str | Path) -> list[str]:
+    """Return validated target paths so an installer can distinguish owned entries."""
+    data = load_manifest(path)
+    errors = validate_manifest(data)
+    if errors:
+        raise ManifestError("refusing update from invalid manifest:\n- " + "\n- ".join(errors))
+    return [str(_absolute(entry["target"])) for entry in data["entries"]]
+
+
 def adapter_value(path: str | Path, dotted_key: str) -> Any:
     data: Any = json.loads(Path(path).read_text(encoding="utf-8"))
     for part in dotted_key.split("."):
@@ -377,6 +386,11 @@ def _parser() -> argparse.ArgumentParser:
 
     uninstall = subparsers.add_parser("uninstall", help="remove only unchanged owned entries")
     uninstall.add_argument("manifest")
+
+    targets = subparsers.add_parser(
+        "owned-targets", help="print validated target paths recorded in a manifest"
+    )
+    targets.add_argument("manifest")
 
     replacement = subparsers.add_parser(
         "record-replacement", help="record legacy entries removed by an explicit replacement"
@@ -412,6 +426,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "uninstall":
             uninstall_manifest(args.manifest)
             print(f"Removed owned entries from: {args.manifest}")
+        elif args.command == "owned-targets":
+            for target in owned_targets(args.manifest):
+                print(target)
         elif args.command == "record-replacement":
             record_replacement(
                 args.manifest,

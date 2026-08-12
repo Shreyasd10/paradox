@@ -252,9 +252,8 @@ if ((UNINSTALL == 1)); then
     exit 0
   fi
   python3 "$MANIFEST_TOOL" uninstall "$MANIFEST"
-  if [[ "$SCOPE" == "global" ]]; then
+  if [[ "$SCOPE" == "global" ]] && ((SKIP_EXTENSIONS == 0)); then
     extras_args=(uninstall)
-    ((SKIP_EXTENSIONS == 1)) && extras_args+=(--no-extensions)
     ((SKIP_LEAN_CTX == 1)) && extras_args+=(--no-lean-ctx)
     "$ROOT_DIR/scripts/install_pi_extras.sh" "${extras_args[@]}" \
       || echo "WARN: pi extras uninstall reported issues" >&2
@@ -269,9 +268,29 @@ fi
 # ---- plan entries (skills as real dir + content symlinks; agents; templates) ----
 manifest_args=()
 planned_skill_dirs=()
+UPDATE=0
+OWNED_TARGETS_FILE=""
+
+if [[ -e "$MANIFEST" || -L "$MANIFEST" ]]; then
+  UPDATE=1
+  OWNED_TARGETS_FILE="$(mktemp "${TMPDIR:-/tmp}/paradox-owned-targets.XXXXXX")"
+  python3 "$MANIFEST_TOOL" owned-targets "$MANIFEST" > "$OWNED_TARGETS_FILE"
+  printf 'Existing Paradox installation detected; refreshing owned entries only.\n'
+fi
+
+target_is_owned() {
+  ((UPDATE == 1)) && grep -Fqx -- "$1" "$OWNED_TARGETS_FILE"
+}
+
+assert_target_available() {
+  local target="$1"
+  if [[ -e "$target" || -L "$target" ]]; then
+    target_is_owned "$target" || die "refusing to replace unowned entry: $target"
+  fi
+}
 
 link_skill_plan() {
-  local src="$1" dst="$2" package="$3" child
+  local src="$1" dst="$2" package="$3" child existing
   planned_skill_dirs+=("$dst")
   printf '  skill dir %s (contents -> %s)\n' "$dst" "$src"
   if [[ -e "$dst" || -L "$dst" ]]; then
@@ -279,9 +298,10 @@ link_skill_plan() {
       die "refusing to replace unowned entry: $dst"
     fi
     if [[ -d "$dst" ]]; then
-      if [[ -n "$(find "$dst" -mindepth 1 -maxdepth 1 2>/dev/null)" ]]; then
-        die "refusing to replace unowned entry: $dst"
-      fi
+      for existing in "$dst"/*; do
+        [[ -e "$existing" || -L "$existing" ]] || continue
+        assert_target_available "$existing"
+      done
     else
       die "refusing to replace unowned entry: $dst"
     fi
@@ -292,9 +312,7 @@ link_skill_plan() {
     name="$(basename -- "$child")"
     target="$dst/$name"
     printf '    link %s -> %s\n' "$target" "$child"
-    if [[ -e "$target" || -L "$target" ]]; then
-      die "refusing to replace unowned entry: $target"
-    fi
+    assert_target_available "$target"
     manifest_args+=(--entry "$package|$child|$target")
   done
 }
@@ -309,9 +327,7 @@ if [[ -n "$AGENTS_ROOT" ]]; then
   for agent_file in "${agent_files[@]}"; do
     agent_name="$(basename -- "$agent_file")"
     target="$AGENTS_ROOT/$agent_name"
-    if [[ -e "$target" || -L "$target" ]]; then
-      die "refusing to replace unowned entry: $target"
-    fi
+    assert_target_available "$target"
     printf '  link agent %s -> %s\n' "$target" "$agent_file"
     manifest_args+=(--entry "agent:$agent_name|$agent_file|$target")
   done
@@ -319,17 +335,12 @@ fi
 
 templates_target="$TEMPLATES_ROOT"
 printf '  link templates %s -> %s\n' "$templates_target" "$ROOT_DIR/templates"
-if [[ -e "$templates_target" || -L "$templates_target" ]]; then
-  die "refusing to replace unowned entry: $templates_target"
-fi
+assert_target_available "$templates_target"
 manifest_args+=(--entry "templates|$ROOT_DIR/templates|$templates_target")
 
-if [[ -e "$MANIFEST" || -L "$MANIFEST" ]]; then
-  die "an ownership manifest already exists; uninstall it before reinstalling"
-fi
-
 if ((DRY_RUN == 1)); then
-  printf 'Dry run: no files changed.\n'
+  printf 'Dry run: no files changed%s.\n' "$([[ $UPDATE == 1 ]] && printf ' (owned entries would be refreshed)' || true)"
+  [[ -n "$OWNED_TARGETS_FILE" ]] && rm -f -- "$OWNED_TARGETS_FILE"
   if [[ "$SCOPE" == "global" && "$SKIP_EXTENSIONS" -eq 0 ]]; then
     printf 'Dry run would also install Pi extras (extensions / pi-task / lean-ctx / themes).\n'
   fi
@@ -338,6 +349,11 @@ if ((DRY_RUN == 1)); then
   fi
   exit 0
 fi
+
+if ((UPDATE == 1)); then
+  python3 "$MANIFEST_TOOL" uninstall "$MANIFEST"
+fi
+[[ -n "$OWNED_TARGETS_FILE" ]] && rm -f -- "$OWNED_TARGETS_FILE"
 
 mkdir -p "$RUNTIME_HOME" "$SKILLS_ROOT"
 [[ -n "$AGENTS_ROOT" ]] && mkdir -p "$AGENTS_ROOT"

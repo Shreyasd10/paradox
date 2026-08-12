@@ -33,6 +33,24 @@ The one-liner downloads the package into `~/.local/share/paradox/current`
 (no manual clone), then walks through extras / agentmemory prompts — or runs
 non-interactively with `--yes` (macOS) or flags (Windows).
 
+## Update
+
+Re-run the same install command. If Paradox is already installed, the installer
+automatically performs an incremental update: it refreshes manifest-owned
+skills, agents, templates, rules, and extension packages while refusing to
+replace unrelated entries. Existing user settings are merged rather than
+deleted.
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Shreyasd10/paradox/main/get-paradox.sh | bash
+```
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/Shreyasd10/paradox/main/get-paradox.ps1 | iex
+```
+
 ## What's inside
 
 | Layer | Content | Installed to |

@@ -149,7 +149,7 @@ function New-ParadoxJunction([string]$Name, [string]$Source, [string]$Target) {
   $source = [System.IO.Path]::GetFullPath($Source)
   $target = [System.IO.Path]::GetFullPath($Target)
   Write-Host "  junction $Target -> $Source"
-  if (Test-Path $Target) { Die "refusing to replace unowned entry: $Target" }
+  Assert-TargetAvailable $Target
   return @{ kind = "junction"; name = $Name; source = $Source; target = $Target }
 }
 
@@ -157,8 +157,93 @@ function Copy-ParadoxFile([string]$Name, [string]$Source, [string]$Target) {
   $source = [System.IO.Path]::GetFullPath($Source)
   $target = [System.IO.Path]::GetFullPath($Target)
   Write-Host "  copy $Target <- $Source"
-  if (Test-Path $Target) { Die "refusing to replace unowned entry: $Target" }
-  return @{ kind = "copy"; name = $Name; source = $Source; target = $Target }
+  Assert-TargetAvailable $Target
+  $sha256 = (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash.ToLowerInvariant()
+  return @{ kind = "copy"; name = $Name; source = $Source; target = $Target; sha256 = $sha256 }
+}
+
+function Get-PathItem([string]$Path) {
+  try {
+    return Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+  } catch [System.Management.Automation.ItemNotFoundException] {
+    $parent = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) { return $null }
+    return Get-ChildItem -LiteralPath $parent -Force -ErrorAction Stop |
+      Where-Object { $_.Name -eq (Split-Path -Leaf $Path) } |
+      Select-Object -First 1
+  }
+}
+
+function Assert-TargetAvailable([string]$Target) {
+  $item = Get-PathItem $Target
+  if ($item -and -not $script:OwnedTargets.ContainsKey([System.IO.Path]::GetFullPath($Target))) {
+    Die "refusing to replace unowned entry: $Target"
+  }
+}
+
+function Initialize-UpdateManifest($Manifest) {
+  if ($Manifest.product -ne "paradox" -or $Manifest.runtime -ne "pi" -or $Manifest.scope -ne $Scope) {
+    Die "refusing update from an incompatible ownership manifest: $manifestPath"
+  }
+  if ([System.IO.Path]::GetFullPath($Manifest.destination_root) -ne [System.IO.Path]::GetFullPath($runtimeHome)) {
+    Die "refusing update from a manifest for a different runtime home: $manifestPath"
+  }
+  $rootPrefix = [System.IO.Path]::GetFullPath($runtimeHome).TrimEnd('\') + '\'
+  $repositoryPrefix = [System.IO.Path]::GetFullPath($Manifest.repository_root).TrimEnd('\') + '\'
+  $validatedTargets = @{}
+  foreach ($entry in $Manifest.entries) {
+    $target = [System.IO.Path]::GetFullPath($entry.target)
+    $source = [System.IO.Path]::GetFullPath($entry.source)
+    if (-not $target.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      Die "refusing update target outside runtime home: $target"
+    }
+    if (-not $source.StartsWith($repositoryPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      Die "refusing update source outside the managed package: $source"
+    }
+    if ($validatedTargets.ContainsKey($target)) { Die "refusing duplicate update target: $target" }
+    if ($entry.kind -ne "junction" -and $entry.kind -ne "copy") {
+      Die "refusing update for unknown manifest entry kind: $($entry.kind)"
+    }
+    $item = Get-PathItem $target
+    if ($item -and $entry.kind -eq "junction") {
+      $linkTargets = @($item.Target)
+      if (
+        -not ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -or
+        $item.LinkType -ne "Junction" -or
+        $linkTargets.Count -ne 1 -or
+        [System.IO.Path]::GetFullPath([string]$linkTargets[0]) -ne $source
+      ) {
+        Die "refusing to replace changed owned junction: $target"
+      }
+    }
+    if ($item -and $entry.kind -eq "copy") {
+      if ($item.PSIsContainer -or ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        Die "refusing to replace changed owned copy: $target"
+      }
+      if ($entry.sha256) {
+        $actualHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne ([string]$entry.sha256).ToLowerInvariant()) {
+          Die "refusing to replace modified owned copy: $target"
+        }
+      }
+    }
+    $validatedTargets[$target] = $true
+  }
+  return $validatedTargets
+}
+
+function Remove-OwnedEntriesForUpdate($Manifest) {
+  foreach ($entry in $Manifest.entries) {
+    $target = [System.IO.Path]::GetFullPath($entry.target)
+    $item = Get-PathItem $target
+    if (-not $item) { continue }
+    if ($entry.kind -eq "junction") {
+      [System.IO.Directory]::Delete($target)
+    } else {
+      Remove-Item -LiteralPath $target -Force
+    }
+    Write-Host "  refreshing owned entry $target"
+  }
 }
 
 # --- extras ------------------------------------------------------------------
@@ -530,6 +615,13 @@ if ($Uninstall) {
 
 Write-HostPlan
 
+$existingManifest = Load-Manifest
+$script:OwnedTargets = @{}
+if ($existingManifest) {
+  $script:OwnedTargets = Initialize-UpdateManifest $existingManifest
+  Write-Host "Existing Paradox installation detected; refreshing owned entries only."
+}
+
 $entries = @()
 foreach ($skillDir in $skillDirs) {
   $name = Split-Path -Leaf $skillDir
@@ -542,11 +634,15 @@ foreach ($agentFile in $agentFiles) {
 $entries += New-ParadoxJunction "templates" (Join-Path $RootDir "templates") $templatesRoot
 
 if ($DryRun) {
-  Write-Host "Dry run: no files changed."
+  Write-Host "Dry run: no files changed$(if ($existingManifest) { ' (owned entries would be refreshed)' } else { '' })."
   if ($Scope -eq "global" -and -not $NoExtensions) {
     Write-Host "Dry run would also install Pi extras (extensions / pi-task / lean-ctx / themes)."
   }
   exit 0
+}
+
+if ($existingManifest) {
+  Remove-OwnedEntriesForUpdate $existingManifest
 }
 
 New-Item -ItemType Directory -Force -Path $runtimeHome, $skillsRoot | Out-Null

@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/Shreyasd10/custom-atomic-workflows.git",
+    "commit": "ad5190ec7943df8cc315b5b0b1b19075ce01b2d3"
+  },
+  "assets": [
+    {
+      "path": "agents/codebase-analyzer.md",
+      "bytes": 5636,
+      "sha256": "4d9e7ba3be5e6c08659db4e3df67b7fcca5795b424b35479b8ede07d8a5f79cd"
+    },
+    {
+      "path": "agents/codebase-locator.md",
+      "bytes": 4804,
+      "sha256": "3764a634ef3c03a27d3d8c919157c6a8263ec7c72fdf175daf2608367511cd9b"
+    },
+    {
+      "path": "agents/codebase-mapper.md",
+      "bytes": 3785,
+      "sha256": "b03e21c691dee711a59c06eebf71620ba9155eb1b7a40ab2e93567919e70ce7c"
+    },
+    {
+      "path": "agents/codebase-pattern-finder.md",
+      "bytes": 6916,
+      "sha256": "a423c7ca7a6af3627de9bc233eec08d234e34c7e4b18d9b235b5218dab360940"
+    },
+    {
+      "path": "agents/implementer.md",
+      "bytes": 5316,
+      "sha256": "5e5c7db69d96d9990c2f74062319a1f4368c4efb87b188dc839aa36075b782a1"
+    },
+    {
+      "path": "agents/repo-profiler.md",
+      "bytes": 3352,
+      "sha256": "d90aa465078f29292ba61fb142b3b481aa96e0177cb7547eea2863272e787d7b"
+    },
+    {
+      "path": "agents/web-search-researcher.md",
+      "bytes": 5753,
+      "sha256": "3996df1e911ae629d945a68085fc7768989ffa0f722f33aa0ccaa00b479d52d2"
+    },
+    {
+      "path": "agents/workspace-locator.md",
+      "bytes": 3628,
+      "sha256": "328935ac7f20f270af1c88ab7f390664addf31b245cbf6aad287878183741213"
+    },
+    {
+      "path": "skills/compound/NOTICE",
+      "bytes": 1388,
+      "sha256": "2e3f2b2cd25c3d2d6cd24f9ee0df6a9cf3549a59ef98c5a82e95e1d15ba0c863"
+    },
+    {
+      "path": "skills/compound/SKILL.md",
+      "bytes": 7146,
+      "sha256": "5ff9832f5224ffea7b8a5c902e8e53532dfda2e2581740b75d956322163207fe"
+    },
+    {
+      "path": "skills/compound/references/agents/compound-context-analyzer.md",
+      "bytes": 1597,
+      "sha256": "745b2c6f751c174de4e91083458ea5ffd54a169aed6beb259980ce9ecd2c7cf8"
+    },
+    {
+      "path": "skills/compound/references/agents/compound-grounding-validator.md",
+      "bytes": 1203,
+      "sha256": "3259951a4ed6e11b180b0ea9c8e3c8700e666bc21474fca7cae1dd4755d4ae66"
+    },
+    {
+      "path": "skills/compound/references/agents/compound-related-docs-finder.md",
+      "bytes": 1661,
+      "sha256": "cb30269f0fedcb3e78d17edfed09e31c88b9515b1d21eb28561c36f03b95a249"
+    },
+    {
+      "path": "skills/compound/references/agents/compound-session-historian.md",
+      "bytes": 978,
+      "sha256": "e2320d1083cea7aa3693cd3a111b57a7f317d1dd8f20b7c7df8bff3c5014aba1"
+    },
+    {
+      "path": "skills/compound/references/agents/compound-solution-extractor.md",
+      "bytes": 1321,
+      "sha256": "175246acb17888dbbe41a8225917d99b7375ee6243d3c8aac7466b4dd8e92604"
+    },
+    {
+      "path": "skills/compound/scripts/repo-profile-cache.py",
+      "bytes": 15726,
+      "sha256": "62af7495ae66523ba21e568f1192896be3db5bd432d54644d8e54a7e540b44ee"
+    },
+    {
+      "path": "skills/compound/scripts/session-history/discover-sessions.sh",
+      "bytes": 4282,
+      "sha256": "2b00a0147dd33ab0c5d8beac5b2e92800e6de6ec955586861565edfb1b67abe4"
+    },
+    {
+      "path": "skills/compound/scripts/session-history/extract-errors.py",
+      "bytes": 8397,
+      "sha256": "7a3cc8ff7dec161d97e57c8a00544678a3c0ba7492595f7a67331ace9b5ae958"
+    },
+    {
+      "path": "skills/compound/scripts/session-history/extract-metadata.py",
+      "bytes": 17512,
+      "sha256": "6f852aa85b563ff8f5edaa4d6a7788e29bb0fddf372046c4f51115487aa13c63"
+    },
+    {
+      "path": "skills/compound/scripts/session-history/extract-skeleton.py",
+      "bytes": 20986,
+      "sha256": "ed15e345c7c4ea3dde5cae8e43f87ddfcd2c4a548d88ca894375cb83eedf9127"
+    },
+    {
+      "path": "skills/compound/scripts/validate-doc-claims.py",
+      "bytes": 13073,
+      "sha256": "f33375649682d77cd4eb66eab6920210da8a0dde9005c54aa12e0c0b0adfdb79"
+    },
+    {
+      "path": "skills/compound/scripts/validate-frontmatter.py",
+      "bytes": 5063,
+      "sha256": "c165f67c1885875672d45cd447dc75968589a7bb00982c33140fe925d510cf89"
+    },
+    {
+      "path": "skills/create-design-discussion/SKILL.md",
+      "bytes": 6738,
+      "sha256": "4cbba79c82723a9a1e501d48ee7ed8de911b19e6f485d05d7dfed38d430e8acd"
+    },
+    {
+      "path": "skills/create-design-discussion/references/design_discussion_final_answer.md",
+      "bytes": 625,
+      "sha256": "6e9eccd97ee038b4863d9aaa954ddfa4508a273d664be8d817d460fcf0632a6a"
+    },
+    {
+      "path": "skills/create-design-discussion/references/design_discussion_final_answer_resolved.md",
+      "bytes": 221,
+      "sha256": "2a3c3398013905dc85aceaf131d655f645955eaab987d6b79e04db3f242e2d91"
+    },
+    {
+      "path": "skills/create-design-discussion/references/design_discussion_template.md",
+      "bytes": 1963,
+      "sha256": "0e2ebd0eb4c12b1f8f55d8577c54f2c88c4af6dd9f5da86424e2cfdd85556d0d"
+    },
+    {
+      "path": "skills/create-plan/SKILL.md",
+      "bytes": 3980,
+      "sha256": "feecea8deda32bffa0b41f1a110027c6f332b50805647dccb60b6d12a007b030"
+    },
+    {
+      "path": "skills/create-plan/references/plan_final_answer.md",
+      "bytes": 99,
+      "sha256": "56892c484c80bc0f692687a46e3d7a58e554a83cd4b7e31581b725d556dde6b4"
+    },
+    {
+      "path": "skills/create-plan/references/plan_template.md",
+      "bytes": 2359,
+      "sha256": "c4082550c41614ed9c42580c2bf06ad87ea6cbd6b52eb76b4c587dac74241fc4"
+    },
+    {
+      "path": "skills/create-prd/SKILL.md",
+      "bytes": 11977,
+      "sha256": "5fdd98e002784a8b618fead905fb5368f1dd187391fa2f7402e35bff6a9c0335"
+    },
+    {
+      "path": "skills/create-prd/references/prd_final_answer_resolved.md",
+      "bytes": 359,
+      "sha256": "0312877881efc83f417d26548cc2e27bb9b1de15003048ef86d88ac3c6e46d7a"
+    },
+    {
+      "path": "skills/create-prd/references/prd_template.md",
+      "bytes": 1939,
+      "sha256": "6d67f89f3377a74c1df2dfc0cb1c285dfa18e15e34e7b891b327f03b383345c5"
+    },
+    {
+      "path": "skills/create-research-questions/SKILL.md",
+      "bytes": 6821,
+      "sha256": "ee9c3fef266dc160ce4b0759e8a5c58f867281df19864565bd3a67f014bdda5b"
+    },
+    {
+      "path": "skills/create-research-questions/references/research_questions_final_answer.md",
+      "bytes": 255,
+      "sha256": "52044f35ab0ef19d21b2547ba63634fdbb9ac91f518bba35f1099965228b41be"
+    },
+    {
+      "path": "skills/create-research-questions/references/research_questions_template.md",
+      "bytes": 757,
+      "sha256": "66f0a6d9f78153df2e19bd5171ab7c978e1bed529187e343f7cfbb99568bc06c"
+    },
+    {
+      "path": "skills/create-research/SKILL.md",
+      "bytes": 16376,
+      "sha256": "464c2eecce048ebb475e4662cc3fd5d7e1050b8282694c12e9d46d25ef5cc028"
+    },
+    {
+      "path": "skills/create-research/references/research_final_answer.md",
+      "bytes": 281,
+      "sha256": "402fcad8018b8a24a6b15aeac622887489620a6df4b63f122f1cb9ec9497ed60"
+    },
+    {
+      "path": "skills/create-research/references/research_template.md",
+      "bytes": 3144,
+      "sha256": "9f25dc0c8b7f13de74e9f271371935abd1605f547655276db050853b25bdb89d"
+    },
+    {
+      "path": "skills/create-structure-outline/SKILL.md",
+      "bytes": 7760,
+      "sha256": "c63e838adb90ba4ff54260ddb78a1df4968385dc1112dbdd77b2e77f8c38c8c9"
+    },
+    {
+      "path": "skills/create-structure-outline/references/structure_outline_final_answer.md",
+      "bytes": 880,
+      "sha256": "1cb6c8b50b7c73a22216eb5311c38c19ba9f4565a167a256143617e9c420244b"
+    },
+    {
+      "path": "skills/create-structure-outline/references/structure_outline_template.md",
+      "bytes": 1344,
+      "sha256": "c50d437dcc323a1b0b64cde0d2c3dcaff5886579907589b1cb5081329b0ca96d"
+    },
+    {
+      "path": "skills/create-technical-design/SKILL.md",
+      "bytes": 18075,
+      "sha256": "3eaf41c64f9d03a3849d1482cee1d2d963ec4cd65198a2a6291e30ae5975f93f"
+    },
+    {
+      "path": "skills/create-technical-design/references/artifact_template.html",
+      "bytes": 7049,
+      "sha256": "6cfede6fa2e84c4b3663a51ad91c9093e22f4e3d0851d1b9ec9863266b08ea7f"
+    },
+    {
+      "path": "skills/create-technical-design/references/tdd_final_answer_resolved.md",
+      "bytes": 399,
+      "sha256": "3a22f1ad66812af168d00369a1b0f71a701d5aa7c07eb6fce484be4097387ab2"
+    },
+    {
+      "path": "skills/create-technical-design/references/tdd_template.md",
+      "bytes": 2580,
+      "sha256": "63c28d0eabfbbaa415aeec1b4872db9a8b15d3ef364e0be1b4ca92fbd7fc4515"
+    },
+    {
+      "path": "skills/handoff/SKILL.md",
+      "bytes": 1668,
+      "sha256": "0f163e2fd3144115882fc8a163b6612dadbc4a9e68d842ff7500cb43eb0e22e7"
+    },
+    {
+      "path": "skills/implement-outline/SKILL.md",
+      "bytes": 6603,
+      "sha256": "8d10470259342fe232e2f2986580cde97da726778f50df9de434ae67175d785a"
+    },
+    {
+      "path": "skills/implement-outline/references/implement_outline_final_answer.md",
+      "bytes": 226,
+      "sha256": "91ce9bc96ac8330e0481da6f095cebd612af473886704d126d6c5bbdd3df582d"
+    },
+    {
+      "path": "skills/implement-plan/SKILL.md",
+      "bytes": 5945,
+      "sha256": "621478ea6f2e98fe0212fc9563de4040758c31e92f8b3f0b6e68189c8bd359b6"
+    },
+    {
+      "path": "skills/implement-plan/references/implement_plan_final_answer.md",
+      "bytes": 427,
+      "sha256": "3b04fa5cf2c46428b7a75f433f4ecc4e2ec94e8099dfe104cb4ca41080c42201"
+    },
+    {
+      "path": "skills/map-codebase/SKILL.md",
+      "bytes": 4281,
+      "sha256": "00eb1f0a85d210eb6e4865725b8bc49b0949d24e71a7573be887cd847741e8a8"
+    },
+    {
+      "path": "skills/onboard/SKILL.md",
+      "bytes": 4474,
+      "sha256": "3ab10b273b455a4e44fbf05e587bb10170317cb4692a6ac241a3928554680cd3"
+    },
+    {
+      "path": "skills/prototype/LOGIC.md",
+      "bytes": 1165,
+      "sha256": "0e0e9207c4faa719b57eb98cc50d0542e32646a9ad15dffa6abda9cfcee3cd37"
+    },
+    {
+      "path": "skills/prototype/SKILL.md",
+      "bytes": 2477,
+      "sha256": "499bfeaef45c4a1ed9a18d5a74e6dc0edb3e8702740c3e2590cb135dcf17c7aa"
+    },
+    {
+      "path": "skills/prototype/UI.md",
+      "bytes": 1277,
+      "sha256": "0e69ae1f7e2d7632c57100bef58aed894877a18836b28c56e6d88cb3f2e4b6a5"
+    },
+    {
+      "path": "skills/resume-handoff/SKILL.md",
+      "bytes": 1603,
+      "sha256": "774438d961032475a596e187a736ab384d36e7e6e87d9216d46079bf23ce7b55"
+    },
+    {
+      "path": "skills/wayfinder/SKILL.md",
+      "bytes": 13208,
+      "sha256": "9b606e5227ac4cefd1f1e00984edbd5a15fea4fd2cb5bce9a5cda20291907d6a"
+    },
+    {
+      "path": "skills/wiki/SKILL.md",
+      "bytes": 53000,
+      "sha256": "ca39ce837cdb83d9b3768c7cef202e125041d2c9ce620e463c06ea4f0e13254f"
+    },
+    {
+      "path": "skills/workflow-help/SKILL.md",
+      "bytes": 5047,
+      "sha256": "cd497cfbed336f948497c633be980e6921087bb8b647e0f50af16c2331d4efef"
+    },
+    {
+      "path": "templates/docs/brainstorms/TEMPLATE.md",
+      "bytes": 1397,
+      "sha256": "19691adf9623225b83901bfe5af32eaac11a9a1e1d06bbc35f79298563929d65"
+    },
+    {
+      "path": "templates/docs/design-discussions/TEMPLATE.md",
+      "bytes": 1963,
+      "sha256": "0e2ebd0eb4c12b1f8f55d8577c54f2c88c4af6dd9f5da86424e2cfdd85556d0d"
+    },
+    {
+      "path": "templates/docs/execution-ledger.schema.json",
+      "bytes": 2766,
+      "sha256": "47c2855ff25164185a0dc571820967e60c3e08319ef15fe2e2f8519aaea9503a"
+    },
+    {
+      "path": "templates/docs/handoffs/TEMPLATE.md",
+      "bytes": 1723,
+      "sha256": "8280d127ca59ab4f92338ae753ab7c6c5ebf4af32505e1291edb7dc4778e0920"
+    },
+    {
+      "path": "templates/docs/outlines/TEMPLATE.md",
+      "bytes": 1344,
+      "sha256": "c50d437dcc323a1b0b64cde0d2c3dcaff5886579907589b1cb5081329b0ca96d"
+    },
+    {
+      "path": "templates/docs/plans/TEMPLATE.md",
+      "bytes": 2359,
+      "sha256": "c4082550c41614ed9c42580c2bf06ad87ea6cbd6b52eb76b4c587dac74241fc4"
+    },
+    {
+      "path": "templates/docs/prd/BUG_TEMPLATE.md",
+      "bytes": 2670,
+      "sha256": "4a4218a4c5b73ef0d8d64c35a1f74a61840ac8fbb2c2f42a24c15ad3f41ae066"
+    },
+    {
+      "path": "templates/docs/prd/TEMPLATE.md",
+      "bytes": 1939,
+      "sha256": "6d67f89f3377a74c1df2dfc0cb1c285dfa18e15e34e7b891b327f03b383345c5"
+    },
+    {
+      "path": "templates/docs/research/RESEARCH_QUESTIONS_TEMPLATE.md",
+      "bytes": 757,
+      "sha256": "66f0a6d9f78153df2e19bd5171ab7c978e1bed529187e343f7cfbb99568bc06c"
+    },
+    {
+      "path": "templates/docs/research/TEMPLATE.md",
+      "bytes": 3144,
+      "sha256": "9f25dc0c8b7f13de74e9f271371935abd1605f547655276db050853b25bdb89d"
+    },
+    {
+      "path": "templates/docs/solutions/TEMPLATE.md",
+      "bytes": 1210,
+      "sha256": "805187af890341d6564d01e306967e1ea4193f487c6e5064366affe23216b94a"
+    },
+    {
+      "path": "templates/docs/technical-design/TEMPLATE.md",
+      "bytes": 2580,
+      "sha256": "63c28d0eabfbbaa415aeec1b4872db9a8b15d3ef364e0be1b4ca92fbd7fc4515"
+    },
+    {
+      "path": "templates/docs/technical-design/artifact_template.html",
+      "bytes": 7049,
+      "sha256": "6cfede6fa2e84c4b3663a51ad91c9093e22f4e3d0851d1b9ec9863266b08ea7f"
+    },
+    {
+      "path": "templates/docs/verification/TEMPLATE.md",
+      "bytes": 1817,
+      "sha256": "1db823e36e025383a5a36537e95c1314a989f2e113d5ddcdc39135b0f2d44dca"
+    }
+  ]
+}

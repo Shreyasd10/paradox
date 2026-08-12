@@ -26,7 +26,7 @@ export const HANDOFF_MANIFEST_DIRNAME = "handoffs";
 export const HANDOFF_MANIFEST_LATEST_FILENAME = "handoff-latest.json";
 export const HANDOFF_SNAPSHOT_DIRNAME = "snapshots";
 
-export type HandoffWorkflowFamily = "ralph" | "goal" | "open-claude-design";
+export type HandoffWorkflowFamily = "ralph" | "goal" | "open-claude-design" | "rpi" | "prd-oriented";
 
 export type HandoffEvidenceRef = {
   readonly path: string;
@@ -223,7 +223,9 @@ function isHandoffManifest(value: unknown): value is HandoffManifest {
   if (
     record.workflow !== "ralph" &&
     record.workflow !== "goal" &&
-    record.workflow !== "open-claude-design"
+    record.workflow !== "open-claude-design" &&
+    record.workflow !== "rpi" &&
+    record.workflow !== "prd-oriented"
   ) {
     return false;
   }

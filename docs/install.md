@@ -36,6 +36,33 @@ Flags (run the downloaded file for non-default options):
 powershell -ExecutionPolicy Bypass -File .\get-paradox.ps1 -NoExtensions -NoLeanCtx -WithAgentmemory
 ```
 
+## Update an existing installation
+
+Re-run the same one-command installer used for the initial installation. The
+installer detects the ownership manifest and refreshes only Paradox-owned
+entries. New and changed skills, agents, templates, rules, themes, and vendored
+packages are installed; removed owned entries are cleaned up. Unrelated files
+and settings keys are preserved, and an unowned path collision stops the update
+instead of overwriting it.
+
+Windows installations created before incremental updates were introduced have
+no stored checksums for copied agent files. Their first update trusts the
+existing ownership manifest once; the refreshed manifest records checksums, and
+later updates refuse to overwrite locally modified managed agent copies.
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Shreyasd10/paradox/main/get-paradox.sh | bash
+```
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/Shreyasd10/paradox/main/get-paradox.ps1 | iex
+```
+
+Use the existing `--dry-run` / `-DryRun` options to inspect an update without
+changing the installation.
+
 Private repo: export `GITHUB_TOKEN` (or `GH_TOKEN`) on macOS before running.
 Override ref/repo with `PARADOX_REF` / `PARADOX_REPO` (or `--ref` / `--repo`
 on macOS), and the managed home with `PARADOX_HOME`.

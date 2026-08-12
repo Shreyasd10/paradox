@@ -49,8 +49,61 @@ pi list          # @shreyasdevadiga/pi-workflows present
 - Builtin workflows: `fanOutAndSynthesize`, `adversarialVerification`,
   `tournament`, `classifyAndAct`, `generateAndFilter`, `goal`, `loopUntilDone`,
   `openClaudeDesign`, `ralph`
+- Delivery workflows: `rpi` and `prd-oriented`, with optional research,
+  approval checkpoints, structure outlining, and phase-by-phase implementation
 - Skills: `prompt-engineer`, `research-codebase`, `skill-creator`, `impeccable`,
   `create-spec`
+
+## RPI and PRD-Oriented workflows
+
+Inspect their inputs and launch either workflow from an interactive pi session:
+
+```text
+/workflow inputs rpi
+/workflow rpi task="Implement the requested change"
+/workflow rpi task="..." include_research=true
+/workflow rpi task="..." detailed_plan=true
+/workflow rpi task="..." iteration_context="fork"
+/workflow prd-oriented task="Design and implement the requested product change"
+```
+
+`rpi` runs design discussion → structure outline → implementation.
+`prd-oriented` runs PRD → technical design → structure outline → implementation.
+Set `include_research=true` to prepend research questions and research. Set
+`detailed_plan=true` to add a detailed plan and use `implement-plan` instead of
+the default `implement-outline` path.
+
+Each logical skill stage may conduct multiple one-question human turns. The
+default `iteration_context="fresh"` starts every turn in a clean Pi session and
+re-grounds it from a validated, bounded, SHA-256-checked handoff. The optional
+`iteration_context="fork"` preserves the preceding matching-stage transcript as
+a rollback mode. The selected policy is persisted for pause/resume and cannot
+change during a run. Every completed stage—and every implementation phase
+requested by its skill—pauses for explicit human review before advancing.
+
+The complete applicable `SKILL.md` is injected into every turn byte-for-byte.
+The vendored skills, templates, and agent contracts are protected by
+`workflows/assets/asset-lock.json`; integrity failures stop the workflow.
+
+Both workflows use interactive approval checkpoints and must be run
+interactively. They operate in the invocation directory and do not create
+worktrees or branches, commit, push, or open pull requests.
+
+Delegated research and implementation specialists use the separately installed
+[`pi-task`](https://github.com/Shreyasd10/pi-task) `task` tool. Install pi-task
+and the `my-workflow-2` named agents before running these delivery workflows:
+
+```bash
+pi install git:github.com/Shreyasd10/pi-task
+# From a my-workflow-2 checkout:
+./install.sh --runtime pi --global --skills-agents-only --verify
+```
+
+The workflow also requires the eight matching `my-workflow-2` agent contracts
+under `~/.pi/agent/agents`. Preflight verifies their checksums against the
+vendored contracts. A missing or different agent blocks the run before its first
+stage. Delegation exposes `task` but not `subagent` or `ask_user_question`; the
+workflow does not fall back to `pi-subagents` or inline specialist execution.
 
 ## Authoring
 
