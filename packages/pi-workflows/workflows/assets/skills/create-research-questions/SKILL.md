@@ -43,6 +43,12 @@ These questions will be used by another agent to research the codebase.
       - For SDK docs, library usage, best practices
       - Skip if the task is purely internal
 
+    **Delegation budgets and recovery**:
+    - Use only the specialists needed for the task, and give each one a focused, self-contained request.
+    - Set `max_turns` explicitly on every specialist call. Use 24 turns for codebase-locator, codebase-analyzer, and codebase-pattern-finder; use 20 turns for web-search-researcher.
+    - A result ending in `[Stopped: reached max_turns=...]` is incomplete and must not be treated as a finding.
+    - If a specialist reaches its cap, resume that same task once with its `task_id`, `max_turns: 12`, and an instruction to synthesize the evidence already gathered into the requested final report. Do not discard its work by starting a fresh replacement search.
+
 3. **Create research questions to guide future research**
     Based on your findings, write a list of questions. 
     
@@ -115,4 +121,3 @@ This is the one question category that does not need to be tailored to the speci
 ## Git policy (user-owned)
 
 Never run git checkout/commit/push, worktree mutations, or gh pr mutations. Suggest the exact commands for the user to run themselves.
-

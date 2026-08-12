@@ -55,6 +55,13 @@ describe("custom delivery workflows", () => {
 		assert.match(prompt, /Agent\(\).*legacy vocabulary/);
 	});
 
+	test("gives research-question specialists enough turns and resumes capped work", () => {
+		const skill = verbatimSkill("create-research-questions");
+		assert.match(skill, /Use 24 turns for codebase-locator, codebase-analyzer, and codebase-pattern-finder/);
+		assert.match(skill, /resume that same task once with its `task_id`, `max_turns: 12`/);
+		assert.match(skill, /Do not discard its work by starting a fresh replacement search/);
+	});
+
 	test("builds first-class graphs with reviewable optional paths", () => {
 		assert.deepEqual(rpiGraph(false, false).map((stage) => stage.skill), [
 			"create-design-discussion",

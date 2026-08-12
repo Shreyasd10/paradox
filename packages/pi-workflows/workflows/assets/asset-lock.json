@@ -2,7 +2,7 @@
   "schema_version": 1,
   "upstream": {
     "repository": "https://github.com/Shreyasd10/custom-atomic-workflows.git",
-    "commit": "ad5190ec7943df8cc315b5b0b1b19075ce01b2d3"
+    "commit": "4f93ee68838ccdbc6ab1abc1933a7320ec206fca"
   },
   "assets": [
     {
@@ -167,8 +167,8 @@
     },
     {
       "path": "skills/create-research-questions/SKILL.md",
-      "bytes": 6821,
-      "sha256": "ee9c3fef266dc160ce4b0759e8a5c58f867281df19864565bd3a67f014bdda5b"
+      "bytes": 7524,
+      "sha256": "c15b9db1ca3ec3d38f303461ece26b312fc7085a1035b2357e073d274ec822c7"
     },
     {
       "path": "skills/create-research-questions/references/research_questions_final_answer.md",
