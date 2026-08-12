@@ -23,6 +23,9 @@ describe("custom delivery workflows", () => {
 	test("registers RPI and PRD-Oriented in the live bundled startup catalog", () => {
 		const result = discoverStartupWorkflowsSync();
 		assert.equal(result.registry.names().length, 11);
+		const executableBundle = readFileSync(join(process.cwd(), "src/extension/index.bundle.mjs"), "utf8");
+		assert.match(executableBundle, /name: "RPI"/);
+		assert.match(executableBundle, /name: "PRD-Oriented"/);
 
 		for (const name of ["rpi", "prd-oriented"]) {
 			const definition = result.registry.get(name);

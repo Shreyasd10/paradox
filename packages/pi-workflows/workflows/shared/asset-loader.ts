@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,7 +15,13 @@ type AssetLock = {
 	assets: AssetLockEntry[];
 };
 
-export const workflowRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const sourceWorkflowRoot = resolve(moduleDir, "..");
+const bundledWorkflowRoot = resolve(moduleDir, "../..", "workflows");
+
+export const workflowRoot = existsSync(resolve(sourceWorkflowRoot, "assets", "asset-lock.json"))
+	? sourceWorkflowRoot
+	: bundledWorkflowRoot;
 export const assetRoot = resolve(workflowRoot, "assets");
 export const templateRoot = resolve(assetRoot, "templates");
 export const agentRoot = resolve(assetRoot, "agents");
