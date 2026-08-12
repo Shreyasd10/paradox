@@ -17,7 +17,7 @@ If you were provided with a path to a plan file, proceed with the plan.
 If you were provided with a task artifact directory like `docs/plans/` you should list the contents with `ls -La` to locate the plan file inside of it, e.g. `ls docs/plans/` slug>`. Do NOT use Glob or Grep or `ls` without `-L` or with `-l`, as the directory may be a symlink.
 
 ### 1. Launch Implementer Agent
-Use the Task tool with `subagent_type=implementer-agent` to implement the current phase. Provide clear instructions about which phase to implement.
+Use the Task tool with `subagent_type=implementer` to implement the current phase. Provide clear instructions about which phase to implement.
 
 Example:
 ```
@@ -150,7 +150,7 @@ Do not invent `tdd-only` or `exempt`. If test mode is omitted, STOP and ask — 
 
 ## Coding units → implementer
 
-For each **coding unit**, dispatch `implementer` (`agents/implementer.md`) or run that prompt **inline** if the runtime has no subagent primitive.
+For each **coding unit**, dispatch `implementer` (`agents/implementer.md`). If it is unavailable, stop and report the blocked prerequisite instead of substituting inline work.
 
 Parent must not check off a unit without RED proof (or recorded exempt OK).
 

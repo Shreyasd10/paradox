@@ -49,7 +49,8 @@ export function piTaskExecutionPolicy(cwd: string): string {
 		"- For every delegated specialist, call only the installed pi-task `task` tool.",
 		`- Every call must use cwd=${JSON.stringify(cwd)}, context=\"fresh\", background=false, and agent_scope=\"user\".`,
 		"- Use the exact named agent requested by the skill. Agent(), Agent tool, subagent, subagent_type, and inline specialist fallback are legacy vocabulary; translate them to pi-task.",
-		"- Set max_turns by work size: locator 8–10; targeted analysis 12–16; broad research 16–24; implementation/review 24–32.",
+		"- Set max_turns explicitly by agent: codebase-locator=24; codebase-analyzer=32; codebase-pattern-finder=32; web-search-researcher=24; implementer=32; other named agents=24.",
+		"- A result ending in [Stopped: reached max_turns=...] is incomplete. Resume that same task once with its task_id and max_turns=16, asking it to synthesize gathered evidence; never start a replacement or use max_turns=0.",
 		"- If the task tool or named agent is unavailable, return blocked. Never substitute another delegation mechanism.",
 		"- Do not call ask_user_question. Return one question through the required structured outcome; the host owns all human interaction.",
 	].join("\n");

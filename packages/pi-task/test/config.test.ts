@@ -7,6 +7,7 @@ import {
 	DEFAULT_PI_TASK_CONFIG,
 	loadPiTaskConfig,
 	providerConcurrencyLimit,
+	resolveResumeTaskPolicy,
 	resolveTaskPolicy,
 	resolveThinkingLevel,
 } from "../src/config.ts";
@@ -124,10 +125,22 @@ describe("config", () => {
 		assert.equal(resolved.maxTurns, 12);
 	});
 
+	it("preserves persisted policy and applies explicit resume overrides", () => {
+		const existing = resolveTaskPolicy(DEFAULT_PI_TASK_CONFIG, {
+			maxTurns: 24,
+			maxOutputTokens: 16000,
+			thinking: "high",
+		});
+		const resolved = resolveResumeTaskPolicy(DEFAULT_PI_TASK_CONFIG, existing, { maxTurns: 16 });
+		assert.equal(resolved.maxTurns, 16);
+		assert.equal(resolved.maxOutputTokens, 16000);
+		assert.equal(resolved.thinking, "high");
+		assert.equal(resolved.maxOutputTokensPerRequest, existing.maxOutputTokensPerRequest);
+	});
+
 	it("resolves thinking with fork-forced-off precedence", () => {
 		assert.equal(resolveThinkingLevel("high", "medium", true), "off");
 		assert.equal(resolveThinkingLevel("high", "medium", false), "high");
 		assert.equal(resolveThinkingLevel("inherit", "low", false), "low");
 	});
 });
-

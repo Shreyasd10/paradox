@@ -58,7 +58,7 @@ Bash(git rev-parse --git-dir)
 
 2. **Read the appropriate final output template**:
 
-
+`Read(references/plan_final_answer.md)`
 
 
 <guidance>
@@ -102,4 +102,3 @@ If the user asks for oneshot `implement-plan` without a declared test mode, STOP
 ## Git policy (user-owned)
 
 Never run git checkout/commit/push, worktree mutations, or gh pr mutations. Suggest the exact commands for the user to run themselves.
-

@@ -6,6 +6,7 @@ const designDiscussion: SkillStageSpec = {
 	skill: "create-design-discussion",
 	label: "Design discussion",
 	instructions: "Run the complete design discussion, resolve every design question with the human, and produce the final approved design artifact.",
+	maxTurns: 64,
 };
 
 export function rpiGraph(includeResearch: boolean, detailedPlan: boolean): SkillStageSpec[] {

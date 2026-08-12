@@ -53924,7 +53924,8 @@ function piTaskExecutionPolicy(cwd) {
     "- For every delegated specialist, call only the installed pi-task `task` tool.",
     `- Every call must use cwd=${JSON.stringify(cwd)}, context="fresh", background=false, and agent_scope="user".`,
     "- Use the exact named agent requested by the skill. Agent(), Agent tool, subagent, subagent_type, and inline specialist fallback are legacy vocabulary; translate them to pi-task.",
-    "- Set max_turns by work size: locator 8\u201310; targeted analysis 12\u201316; broad research 16\u201324; implementation/review 24\u201332.",
+    "- Set max_turns explicitly by agent: codebase-locator=24; codebase-analyzer=32; codebase-pattern-finder=32; web-search-researcher=24; implementer=32; other named agents=24.",
+    "- A result ending in [Stopped: reached max_turns=...] is incomplete. Resume that same task once with its task_id and max_turns=16, asking it to synthesize gathered evidence; never start a replacement or use max_turns=0.",
     "- If the task tool or named agent is unavailable, return blocked. Never substitute another delegation mechanism.",
     "- Do not call ask_user_question. Return one question through the required structured outcome; the host owns all human interaction."
   ].join("\n");
@@ -53935,8 +53936,8 @@ import { existsSync as existsSync10 } from "node:fs";
 import { readFile as readFile2, writeFile as writeFile8 } from "node:fs/promises";
 import { resolve as resolve6 } from "node:path";
 var RUN_POLICY_SCHEMA_VERSION = 1;
-var GRAPH_VERSION = 1;
-var DELEGATION_POLICY_VERSION = 1;
+var GRAPH_VERSION = 2;
+var DELEGATION_POLICY_VERSION = 2;
 function policyPath(artifactRoot) {
   return resolve6(artifactRoot, "delivery-run-policy.json");
 }
@@ -53986,7 +53987,8 @@ var turnOutcomeSchema = Type13.Object(
   },
   { additionalProperties: false }
 );
-var MAX_STAGE_TURNS = 32;
+var DEFAULT_STAGE_TURNS = 32;
+var MAX_STAGE_TURNS = 96;
 var MAX_ACTIVE_ANSWER_BYTES = 32 * 1024;
 var DeliveryWorkflowBlocked = class extends Error {
 };
@@ -54014,11 +54016,13 @@ async function createDeliveryHost(ctx, workflow2) {
     workflow: workflow2,
     iterationContext: policy.iteration_context,
     artifactRoot,
-    completedStages: []
+    completedStages: [],
+    approvedArtifacts: []
   };
 }
 function buildVerbatimSkillPrompt(args) {
   const skill = verbatimSkill(args.stage.skill);
+  const approvedArtifacts = args.host.approvedArtifacts ?? [];
   return [
     piTaskExecutionPolicy(args.host.cwd),
     "WORKFLOW TURN CONTRACT:",
@@ -54030,6 +54034,8 @@ ${args.host.task}
 ---`,
     `- Templates are rooted at ${templateRoot}; canonical named-agent contracts are rooted at ${agentRoot}.`,
     `- Stage scope: ${args.stage.instructions}`,
+    approvedArtifacts.length === 0 ? "- There are no approved upstream artifacts for this stage." : `- Approved upstream artifacts from earlier stages (read these exact files before searching for alternatives):
+${approvedArtifacts.map((path7) => `  - ${path7}`).join("\n")}`,
     args.handoff === void 0 ? "- This is the first turn for this logical stage." : `- Validate and use the handoff at ${args.handoff}.`,
     args.answer === void 0 ? "- There is no new human answer on this turn." : `- Latest human answer (verbatim):
 ---
@@ -54143,7 +54149,9 @@ async function runVerbatimSkillStage(host, stage) {
   let previousSessionFile;
   let latestHandoff;
   let answer;
-  for (let turn = 1; turn <= MAX_STAGE_TURNS; turn += 1) {
+  const stageArtifacts = /* @__PURE__ */ new Set();
+  const maxTurns = Math.min(stage.maxTurns ?? DEFAULT_STAGE_TURNS, MAX_STAGE_TURNS);
+  for (let turn = 1; turn <= maxTurns; turn += 1) {
     if (turn > 1 && host.iterationContext !== ITERATION_CONTEXT_FORK) {
       latestHandoff ??= handoffLatestManifestPath(stageRoot);
       validateHandoffManifest({ artifactRoot: stageRoot, manifestPath: latestHandoff });
@@ -54167,6 +54175,7 @@ async function runVerbatimSkillStage(host, stage) {
     previousSessionFile = result.sessionFile;
     const outcome = structuredOutcome(result, stage);
     latestHandoff = await recordTurn(host, stage, stageRoot, turn, outcome, answer);
+    for (const path7 of outcome.artifact_paths) stageArtifacts.add(path7);
     if (outcome.kind === "blocked") throw new DeliveryWorkflowBlocked(outcome.message);
     if (outcome.kind === "question") {
       answer = await humanInput(host, outcome.message);
@@ -54180,11 +54189,15 @@ async function runVerbatimSkillStage(host, stage) {
     if (await host.ctx.ui.confirm(`Review and approve the completed ${stage.label} stage.`)) {
       await recordStageApproval(host, stage, stageRoot, turn, latestHandoff);
       host.completedStages.push(stage.skill);
+      host.approvedArtifacts ??= [];
+      for (const path7 of stageArtifacts) {
+        if (!host.approvedArtifacts.includes(path7)) host.approvedArtifacts.push(path7);
+      }
       return;
     }
     answer = `STAGE CHANGES REQUESTED: ${await humanInput(host, `What should change in ${stage.label}?`)}`;
   }
-  throw new DeliveryWorkflowBlocked(`${stage.label} exceeded ${MAX_STAGE_TURNS} bounded turns`);
+  throw new DeliveryWorkflowBlocked(`${stage.label} exceeded ${maxTurns} bounded turns`);
 }
 async function runDeliveryGraph(host, stages) {
   try {
@@ -54220,28 +54233,32 @@ var structureOutline = {
   skill: "create-structure-outline",
   label: "Structure outline",
   instructions: "Create and fully resolve the vertical implementation outline. Do not implement code.",
-  model: LUNA_MEDIUM
+  model: LUNA_MEDIUM,
+  maxTurns: 48
 };
 var detailedPlan = {
   id: "detailed-plan",
   skill: "create-plan",
   label: "Detailed implementation plan",
   instructions: "Convert the approved structure outline into the complete detailed implementation plan. Do not implement code.",
-  model: LUNA_MEDIUM
+  model: LUNA_MEDIUM,
+  maxTurns: 48
 };
 var implementOutline = {
   id: "implement-outline",
   skill: "implement-outline",
   label: "Outline implementation",
   instructions: "Implement every phase from the approved structure outline. Return an internal approval gate after each phase before advancing.",
-  model: LUNA_MEDIUM
+  model: LUNA_MEDIUM,
+  maxTurns: 64
 };
 var implementPlan = {
   id: "implement-plan",
   skill: "implement-plan",
   label: "Plan implementation",
   instructions: "Implement every phase from the approved detailed plan. Return an internal approval gate after each phase before advancing.",
-  model: LUNA_MEDIUM
+  model: LUNA_MEDIUM,
+  maxTurns: 64
 };
 function researchStages(enabled) {
   return enabled ? [researchQuestions, research] : [];
@@ -54256,13 +54273,15 @@ var productRequirements = {
   id: "product-requirements",
   skill: "create-prd",
   label: "Product requirements",
-  instructions: "Run the complete guided PRD interview, settle the foundation and solution one decision at a time, and produce the approved PRD artifact."
+  instructions: "Run the complete guided PRD interview, settle the foundation and solution one decision at a time, and produce the approved PRD artifact.",
+  maxTurns: 64
 };
 var technicalDesign = {
   id: "technical-design",
   skill: "create-technical-design",
   label: "Technical design",
-  instructions: "Run the complete System Design and Program Design interviews. Require an internal human approval gate after System Design before opening Program Design."
+  instructions: "Run the complete System Design and Program Design interviews. Require an internal human approval gate after System Design before opening Program Design.",
+  maxTurns: 96
 };
 function prdOrientedGraph(includeResearch, detailedPlan2) {
   return [
@@ -55654,7 +55673,8 @@ var designDiscussion = {
   id: "design-discussion",
   skill: "create-design-discussion",
   label: "Design discussion",
-  instructions: "Run the complete design discussion, resolve every design question with the human, and produce the final approved design artifact."
+  instructions: "Run the complete design discussion, resolve every design question with the human, and produce the final approved design artifact.",
+  maxTurns: 64
 };
 function rpiGraph(includeResearch, detailedPlan2) {
   return [

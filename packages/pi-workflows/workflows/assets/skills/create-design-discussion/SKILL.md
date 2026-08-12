@@ -12,8 +12,8 @@ You are now in the Design Discussion phase. Based on the research findings and t
 
 1. **Read the files in the task artifact directory and any mentioned files immediately and FULLY**:
    - `ls docs/design-discussions/` to find all related documents in the task directory. Do NOT use the Grep or Glob tools, or `ls -l` as the directory may be a symlink.\
-   - Ticket files (e.g., `docs/design-discussions/`)
-   - Research documents (e.g. `docs/design-discussions/`)
+   - Ticket or task-context files named in the workflow prompt
+   - Approved research documents named in the workflow prompt (normally under `docs/research/`)
    - **DO NOT read research questions documents** - research questions are inputs to the research phase only.
    - **IMPORTANT**: Use the Read tool WITHOUT limit/offset parameters to read entire files, never read files partially - if a file is mentioned, read it completely
    - do not spawn sub-tasks before reading these files yourself in the main context
@@ -128,4 +128,3 @@ The ticket provides the initial request; the design discussion refines and final
 ## Git policy (user-owned)
 
 Never run git checkout/commit/push, worktree mutations, or gh pr mutations. Suggest the exact commands for the user to run themselves.
-

@@ -6,8 +6,8 @@ import { assetLockSha256 } from "./asset-loader.js";
 import { REQUIRED_PI_TASK_AGENTS } from "./pi-task-policy.js";
 
 const RUN_POLICY_SCHEMA_VERSION = 1;
-const GRAPH_VERSION = 1;
-const DELEGATION_POLICY_VERSION = 1;
+const GRAPH_VERSION = 2;
+const DELEGATION_POLICY_VERSION = 2;
 
 type DeliveryRunPolicy = {
 	schema_version: number;

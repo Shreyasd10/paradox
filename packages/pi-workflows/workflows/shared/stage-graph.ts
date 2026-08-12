@@ -4,6 +4,7 @@ export type SkillStageSpec = {
 	label: string;
 	instructions: string;
 	model?: string;
+	maxTurns?: number;
 };
 
 export const LUNA_MEDIUM = "openai-codex/gpt-5.6-luna:medium";
@@ -28,6 +29,7 @@ const structureOutline: SkillStageSpec = {
 	label: "Structure outline",
 	instructions: "Create and fully resolve the vertical implementation outline. Do not implement code.",
 	model: LUNA_MEDIUM,
+	maxTurns: 48,
 };
 
 const detailedPlan: SkillStageSpec = {
@@ -36,6 +38,7 @@ const detailedPlan: SkillStageSpec = {
 	label: "Detailed implementation plan",
 	instructions: "Convert the approved structure outline into the complete detailed implementation plan. Do not implement code.",
 	model: LUNA_MEDIUM,
+	maxTurns: 48,
 };
 
 const implementOutline: SkillStageSpec = {
@@ -44,6 +47,7 @@ const implementOutline: SkillStageSpec = {
 	label: "Outline implementation",
 	instructions: "Implement every phase from the approved structure outline. Return an internal approval gate after each phase before advancing.",
 	model: LUNA_MEDIUM,
+	maxTurns: 64,
 };
 
 const implementPlan: SkillStageSpec = {
@@ -52,6 +56,7 @@ const implementPlan: SkillStageSpec = {
 	label: "Plan implementation",
 	instructions: "Implement every phase from the approved detailed plan. Return an internal approval gate after each phase before advancing.",
 	model: LUNA_MEDIUM,
+	maxTurns: 64,
 };
 
 export function researchStages(enabled: boolean): SkillStageSpec[] {

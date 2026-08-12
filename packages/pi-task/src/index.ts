@@ -21,6 +21,7 @@ import { discoverAgents, type AgentConfig } from "./agents.ts";
 import { deriveChildTools, runChild } from "./child-runner.ts";
 import {
 	loadPiTaskConfig,
+	resolveResumeTaskPolicy,
 	resolveTaskPolicy,
 	resolveThinkingLevel,
 	type PiTaskConfig,
@@ -367,7 +368,20 @@ function emptyToolUi(): { render(): string[]; invalidate(): void } {
 				// A previous undelivered completion belongs to the old run.
 				deleteResult(params.task_id);
 				const resumeModel = resolveModel(agent.model, ctx.model, ctx.modelRegistry);
-				return runForegroundResume(pi, agent, existingRecord, params.task, ctx, signal, onUpdate, undefined, resumeModel);
+				const resumedPolicy = resolveResumeTaskPolicy(state.config, existingRecord.policy, {
+					maxTurns: params.max_turns,
+					maxOutputTokens: params.max_output_tokens,
+					thinking: params.thinking as ThinkingPolicy | undefined,
+				});
+				const parentThinking = (pi.getThinkingLevel?.() ?? "off") as ThinkingLevel;
+				const resolvedThinking = params.thinking === undefined && existingRecord.policy?.resolvedThinking !== undefined
+					? existingRecord.policy.resolvedThinking
+					: resolveThinkingLevel(resumedPolicy.thinking, parentThinking);
+				const resumeRecord: TaskRecord = {
+					...existingRecord,
+					policy: { ...resumedPolicy, resolvedThinking },
+				};
+				return runForegroundResume(pi, agent, resumeRecord, params.task, ctx, signal, onUpdate, undefined, resumeModel);
 			}
 
 			// --- New task path ---

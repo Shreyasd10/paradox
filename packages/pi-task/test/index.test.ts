@@ -20,7 +20,7 @@ it("discovers a project agent from the requested task cwd before child startup",
 	};
 	const originalInvokeChild = runtimePrototype.invokeChild;
 	let childStarts = 0;
-	let childConfig: TaskRunConfig | undefined;
+	const childConfigs: TaskRunConfig[] = [];
 	let shutdown: (() => void) | undefined;
 
 	try {
@@ -40,7 +40,7 @@ it("discovers a project agent from the requested task cwd before child startup",
 
 		runtimePrototype.invokeChild = async (config) => {
 			childStarts++;
-			childConfig = config;
+			childConfigs.push(config);
 			return {
 				exitCode: 0,
 				output: "child-started",
@@ -108,9 +108,9 @@ it("discovers a project agent from the requested task cwd before child startup",
 
 		assert.equal(childStarts, 1);
 		assert.equal(result.content[0]?.text, "child-started");
-		assert.equal(childConfig?.cwd, requestedCwd);
-		assert.deepEqual(childConfig?.childExtensions, ["advisor"]);
-		assert.deepEqual(childConfig?.tools, ["read", "advisor"]);
+		assert.equal(childConfigs[0]?.cwd, requestedCwd);
+		assert.deepEqual(childConfigs[0]?.childExtensions, ["advisor"]);
+		assert.deepEqual(childConfigs[0]?.tools, ["read", "advisor"]);
 		assert.deepEqual(confirmations, [{
 			title: "Run project-local agent?",
 			message: `Agent: stage-probe\nSource: ${projectAgentsDir}\n\nProject agents are repo-controlled. Only continue for trusted repositories.`,
@@ -123,6 +123,39 @@ it("discovers a project agent from the requested task cwd before child startup",
 		assert.equal(record.agentSource, "project");
 		assert.deepEqual(record.childExtensions, ["advisor"]);
 		assert.equal(record.state, "completed");
+
+		fs.mkdirSync(path.dirname(record.sessionPath!), { recursive: true });
+		fs.writeFileSync(record.sessionPath!, "");
+		await taskTool.execute(
+			"resume-call-id",
+			{
+				agent: "stage-probe",
+				task: "Synthesize the gathered evidence",
+				task_id: record.id,
+				cwd: requestedCwd,
+				agent_scope: "project",
+				max_turns: 7,
+				max_output_tokens: 900,
+				thinking: "low",
+			},
+			new AbortController().signal,
+			undefined,
+			{
+				cwd: artifactCwd,
+				hasUI: true,
+				ui,
+				model: undefined,
+				modelRegistry: { find: () => undefined },
+				sessionManager: {
+					getSessionFile: () => null,
+					getSessionId: () => "parent-session",
+				},
+			},
+		);
+		assert.equal(childStarts, 2);
+		assert.equal(childConfigs[1]?.maxTurns, 7);
+		assert.equal(childConfigs[1]?.maxOutputTokens, 900);
+		assert.equal(childConfigs[1]?.thinkingOverride, "low");
 	} finally {
 		shutdown?.();
 		runtimePrototype.invokeChild = originalInvokeChild;

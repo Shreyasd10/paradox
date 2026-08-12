@@ -218,6 +218,22 @@ export function resolveTaskPolicy(
 	};
 }
 
+/** Resolve one resumed invocation, preserving persisted policy unless explicitly overridden. */
+export function resolveResumeTaskPolicy(
+	config: PiTaskConfig,
+	existing: ResolvedTaskPolicy | undefined,
+	overrides: TaskPolicyOverrides = {},
+): ResolvedTaskPolicy {
+	return {
+		maxTurns: overrides.maxTurns ?? existing?.maxTurns ?? config.defaultMaxTurns,
+		maxOutputTokens: overrides.maxOutputTokens ?? existing?.maxOutputTokens ?? config.defaultMaxOutputTokens,
+		maxOutputTokensPerRequest: existing?.maxOutputTokensPerRequest ?? config.maxOutputTokensPerRequest,
+		thinking: overrides.thinking ?? existing?.thinking ?? config.defaultThinking,
+		resultHeadBytes: existing?.resultHeadBytes ?? config.resultHeadBytes,
+		resultTailBytes: existing?.resultTailBytes ?? config.resultTailBytes,
+	};
+}
+
 /**
  * Resolve thinking for a child run.
  * Precedence: forced off (fork safety) → task/config policy → parent inherit.

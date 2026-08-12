@@ -54,7 +54,8 @@ const turnOutcomeSchema = Type.Object(
 
 type TurnOutcome = Static<typeof turnOutcomeSchema>;
 
-const MAX_STAGE_TURNS = 32;
+const DEFAULT_STAGE_TURNS = 32;
+const MAX_STAGE_TURNS = 96;
 const MAX_ACTIVE_ANSWER_BYTES = 32 * 1024;
 
 export class DeliveryWorkflowBlocked extends Error {}
@@ -67,6 +68,7 @@ export type DeliveryHost = {
 	iterationContext: IterationContextMode;
 	artifactRoot: string;
 	completedStages: string[];
+	approvedArtifacts: string[];
 };
 
 export async function createDeliveryHost(
@@ -97,6 +99,7 @@ export async function createDeliveryHost(
 		iterationContext: policy.iteration_context,
 		artifactRoot,
 		completedStages: [],
+		approvedArtifacts: [],
 	};
 }
 
@@ -108,6 +111,7 @@ export function buildVerbatimSkillPrompt(args: {
 	handoff?: string;
 }): string {
 	const skill = verbatimSkill(args.stage.skill);
+	const approvedArtifacts = args.host.approvedArtifacts ?? [];
 	return [
 		piTaskExecutionPolicy(args.host.cwd),
 		"WORKFLOW TURN CONTRACT:",
@@ -116,6 +120,9 @@ export function buildVerbatimSkillPrompt(args: {
 		`- Original immutable task contract:\n---\n${args.host.task}\n---`,
 		`- Templates are rooted at ${templateRoot}; canonical named-agent contracts are rooted at ${agentRoot}.`,
 		`- Stage scope: ${args.stage.instructions}`,
+		approvedArtifacts.length === 0
+			? "- There are no approved upstream artifacts for this stage."
+			: `- Approved upstream artifacts from earlier stages (read these exact files before searching for alternatives):\n${approvedArtifacts.map((path) => `  - ${path}`).join("\n")}`,
 		args.handoff === undefined ? "- This is the first turn for this logical stage." : `- Validate and use the handoff at ${args.handoff}.`,
 		args.answer === undefined ? "- There is no new human answer on this turn." : `- Latest human answer (verbatim):\n---\n${args.answer}\n---`,
 		"- Execute the immutable skill faithfully. When it requires waiting for the human, stop after exactly one question and return kind=question.",
@@ -243,8 +250,10 @@ export async function runVerbatimSkillStage(host: DeliveryHost, stage: SkillStag
 	let previousSessionFile: string | undefined;
 	let latestHandoff: string | undefined;
 	let answer: string | undefined;
+	const stageArtifacts = new Set<string>();
+	const maxTurns = Math.min(stage.maxTurns ?? DEFAULT_STAGE_TURNS, MAX_STAGE_TURNS);
 
-	for (let turn = 1; turn <= MAX_STAGE_TURNS; turn += 1) {
+	for (let turn = 1; turn <= maxTurns; turn += 1) {
 		if (turn > 1 && host.iterationContext !== ITERATION_CONTEXT_FORK) {
 			latestHandoff ??= handoffLatestManifestPath(stageRoot);
 			validateHandoffManifest({ artifactRoot: stageRoot, manifestPath: latestHandoff });
@@ -268,6 +277,7 @@ export async function runVerbatimSkillStage(host: DeliveryHost, stage: SkillStag
 		previousSessionFile = result.sessionFile;
 		const outcome = structuredOutcome(result, stage);
 		latestHandoff = await recordTurn(host, stage, stageRoot, turn, outcome, answer);
+		for (const path of outcome.artifact_paths) stageArtifacts.add(path);
 
 		if (outcome.kind === "blocked") throw new DeliveryWorkflowBlocked(outcome.message);
 		if (outcome.kind === "question") {
@@ -283,12 +293,16 @@ export async function runVerbatimSkillStage(host: DeliveryHost, stage: SkillStag
 		if (await host.ctx.ui.confirm(`Review and approve the completed ${stage.label} stage.`)) {
 			await recordStageApproval(host, stage, stageRoot, turn, latestHandoff);
 			host.completedStages.push(stage.skill);
+			host.approvedArtifacts ??= [];
+			for (const path of stageArtifacts) {
+				if (!host.approvedArtifacts.includes(path)) host.approvedArtifacts.push(path);
+			}
 			return;
 		}
 		answer = `STAGE CHANGES REQUESTED: ${await humanInput(host, `What should change in ${stage.label}?`)}`;
 	}
 
-	throw new DeliveryWorkflowBlocked(`${stage.label} exceeded ${MAX_STAGE_TURNS} bounded turns`);
+	throw new DeliveryWorkflowBlocked(`${stage.label} exceeded ${maxTurns} bounded turns`);
 }
 
 export async function runDeliveryGraph(host: DeliveryHost, stages: readonly SkillStageSpec[]): Promise<DeliveryWorkflowOutputs> {

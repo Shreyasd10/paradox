@@ -58,7 +58,7 @@ Bash(git rev-parse --git-dir)
 
 2. **Read the appropriate final output template**:
 
-
+`Read(references/plan_final_answer.md)`
 
 
 <guidance>

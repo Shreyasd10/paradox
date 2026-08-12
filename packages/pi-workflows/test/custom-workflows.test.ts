@@ -57,8 +57,8 @@ describe("custom delivery workflows", () => {
 
 	test("gives research-question specialists enough turns and resumes capped work", () => {
 		const skill = verbatimSkill("create-research-questions");
-		assert.match(skill, /Use 24 turns for codebase-locator, codebase-analyzer, and codebase-pattern-finder/);
-		assert.match(skill, /resume that same task once with its `task_id`, `max_turns: 12`/);
+		assert.match(skill, /24 for codebase-locator, 32 for codebase-analyzer and codebase-pattern-finder/);
+		assert.match(skill, /resume that same task once with its `task_id`, `max_turns: 16`/);
 		assert.match(skill, /Do not discard its work by starting a fresh replacement search/);
 	});
 
@@ -84,6 +84,55 @@ describe("custom delivery workflows", () => {
 			"create-plan",
 			"implement-plan",
 		]);
+		assert.equal(prdOrientedGraph(false, false).find((stage) => stage.id === "product-requirements")?.maxTurns, 64);
+		assert.equal(prdOrientedGraph(false, false).find((stage) => stage.id === "technical-design")?.maxTurns, 96);
+	});
+
+	test("propagates approved artifacts through complete RPI and PRD-Oriented graphs", async () => {
+		for (const [workflow, stages] of [
+			["rpi", rpiGraph(true, true)],
+			["prd-oriented", prdOrientedGraph(true, true)],
+		] as const) {
+			const root = mkdtempSync(join(tmpdir(), `${workflow}-graph-`));
+			const prompts: string[] = [];
+			const approvedArtifacts: string[] = [];
+			const host = {
+				ctx: {
+					task: async (name: string, options: Record<string, unknown>) => {
+						const stageId = name.split(":", 1)[0]!;
+						const relativePath = `docs/workflow-test/${stageId}.md`;
+						mkdirSync(join(root, "docs/workflow-test"), { recursive: true });
+						writeFileSync(join(root, relativePath), `${stageId}\n`);
+						prompts.push(String(options.prompt));
+						return {
+							structured: {
+								kind: "stage_complete",
+								message: `${stageId} ready`,
+								artifact_paths: [relativePath],
+								diagnostics: [],
+							},
+							sessionFile: `/tmp/${workflow}-${stageId}.jsonl`,
+						};
+					},
+					ui: { input: async () => "", confirm: async () => true },
+				},
+				cwd: root,
+				task: "Deliver the workflow task",
+				workflow,
+				iterationContext: "fresh",
+				artifactRoot: root,
+				completedStages: [],
+				approvedArtifacts,
+			} as unknown as DeliveryHost;
+
+			for (const stage of stages) await runVerbatimSkillStage(host, stage);
+
+			assert.deepEqual(host.completedStages, stages.map((stage) => stage.skill));
+			assert.equal(host.approvedArtifacts.length, stages.length);
+			for (let index = 1; index < prompts.length; index += 1) {
+				for (const upstream of host.approvedArtifacts.slice(0, index)) assert.match(prompts[index]!, new RegExp(upstream));
+			}
+		}
 	});
 
 	test("fails closed unless pi-task and exact named-agent contracts are installed", () => {
@@ -140,6 +189,7 @@ describe("custom delivery workflows", () => {
 			iterationContext: "fresh",
 			artifactRoot: root,
 			completedStages: [],
+			approvedArtifacts: [],
 		} as unknown as DeliveryHost;
 
 		await runVerbatimSkillStage(host, rpiGraph(false, false)[0]!);
@@ -185,6 +235,7 @@ describe("custom delivery workflows", () => {
 			iterationContext: "fork",
 			artifactRoot: root,
 			completedStages: [],
+			approvedArtifacts: [],
 		} as unknown as DeliveryHost;
 
 		await runVerbatimSkillStage(host, rpiGraph(false, false)[0]!);
