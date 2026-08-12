@@ -62,6 +62,13 @@ describe("custom delivery workflows", () => {
 		assert.match(skill, /Do not discard its work by starting a fresh replacement search/);
 	});
 
+	test("keeps full-research specialist calls bounded while preserving capped work", () => {
+		const skill = verbatimSkill("create-research");
+		assert.match(skill, /24 for codebase-locator, 32 for codebase-analyzer and codebase-pattern-finder/);
+		assert.match(skill, /resume that same task once with its `task_id`, `max_turns: 16`/);
+		assert.match(skill, /do not use `max_turns: 0`/);
+	});
+
 	test("builds first-class graphs with reviewable optional paths", () => {
 		assert.deepEqual(rpiGraph(false, false).map((stage) => stage.skill), [
 			"create-design-discussion",
