@@ -7,14 +7,22 @@ import { discoverAgents } from "../src/agents.ts";
 
 let tmpHome = "";
 const originalHome = process.env.HOME;
+const originalPiAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAtomicAgentDir = process.env.ATOMIC_CODING_AGENT_DIR;
 
 beforeEach(() => {
 	tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "pi-task-agents-"));
 	process.env.HOME = tmpHome;
+	delete process.env.PI_CODING_AGENT_DIR;
+	delete process.env.ATOMIC_CODING_AGENT_DIR;
 });
 
 afterEach(() => {
 	process.env.HOME = originalHome;
+	if (originalPiAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+	else process.env.PI_CODING_AGENT_DIR = originalPiAgentDir;
+	if (originalAtomicAgentDir === undefined) delete process.env.ATOMIC_CODING_AGENT_DIR;
+	else process.env.ATOMIC_CODING_AGENT_DIR = originalAtomicAgentDir;
 	try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch { /* best effort */ }
 });
 

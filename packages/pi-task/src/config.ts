@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { resolveHostAgentDir } from "./host-paths.ts";
 
 export type ThinkingLevel =
 	| "off"
@@ -94,7 +94,7 @@ function cloneDefaults(): PiTaskConfig {
 
 /** Default config path: ~/.pi/agent/pi-task.json */
 export function defaultPiTaskConfigPath(): string {
-	return path.join(getAgentDir(), "pi-task.json");
+	return path.join(resolveHostAgentDir(), "pi-task.json");
 }
 
 /**

@@ -11,7 +11,6 @@ import {
 	DefaultPackageManager,
 	DefaultResourceLoader,
 	truncateHead,
-	getAgentDir,
 	createAgentSession,
 	createExtensionRuntime,
 	SessionManager,
@@ -22,6 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "./config.ts";
 import type { TaskEvent } from "./activity.ts";
+import { resolveHostAgentDir } from "./host-paths.ts";
 import type { ChildExtensionCapability, ChildRunOutput, LimitReason, UsageStats } from "./types.ts";
 import { emptyUsage } from "./types.ts";
 import { OutputBuffer } from "./output-buffer.ts";
@@ -262,7 +262,7 @@ function truncateOutput(output: string): { content: string; truncated: boolean }
  * provider retry handling, typed events, and final error metadata.
  */
 export async function runChild(opts: ChildRunOptions): Promise<ChildRunOutput> {
-	const agentDir = getAgentDir();
+	const agentDir = resolveHostAgentDir();
 	const settingsManager = SettingsManager.create(opts.cwd, agentDir);
 	const createResourceLoader = opts.createTaskResourceLoaderFn ?? createTaskResourceLoader;
 	const resourceLoader = await createResourceLoader({
@@ -494,4 +494,3 @@ export function deriveChildTools(
 	}
 	return tools.length > 0 ? tools : undefined;
 }
-

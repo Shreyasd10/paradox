@@ -14,10 +14,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
-import {
-	type ExtensionAPI,
-	getAgentDir,
-} from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { roster } from "./activity.ts";
 import { discoverAgents, type AgentConfig } from "./agents.ts";
@@ -33,6 +30,7 @@ import {
 import { ConcurrencyScheduler } from "./concurrency.ts";
 import { TaskRuntime } from "./task-runtime.ts";
 import { createForkSession } from "./fork-context.ts";
+import { resolveHostAgentDir } from "./host-paths.ts";
 import { createResultWatcher, type ResultWatcher } from "./result-watcher.ts";
 import {
 	deriveChildSessionPath,
@@ -307,7 +305,7 @@ function emptyToolUi(): { render(): string[]; invalidate(): void } {
 		label: "Task",
 		description: [
 			"Delegate a task to a specialized subagent with an isolated context window.",
-			`Agents are discovered from ${path.join(getAgentDir(), "agents")} by default.`,
+			`Agents are discovered from ${path.join(resolveHostAgentDir(), "agents")} by default.`,
 			'Use agent_scope: "project" or "both" to include project-local agents (.pi/agents).',
 			"Set background: true for async work; you will be notified on completion.",
 			"Pass task_id to resume a prior task.",
