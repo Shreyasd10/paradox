@@ -43,11 +43,9 @@ These questions will be used by another agent to research the codebase.
       - For SDK docs, library usage, best practices
       - Skip if the task is purely internal
 
-    **Delegation budgets and recovery**:
+    **Delegation completion policy**:
     - Use only the specialists needed for the task, and give each one a focused, self-contained request.
-    - Set `max_turns` explicitly on every specialist call: 24 for codebase-locator, 32 for codebase-analyzer and codebase-pattern-finder, and 24 for web-search-researcher.
-    - A result ending in `[Stopped: reached max_turns=...]` is incomplete and must not be treated as a finding.
-    - If a specialist reaches its cap, resume that same task once with its `task_id`, `max_turns: 16`, and an instruction to synthesize the evidence already gathered into the requested final report. Do not discard its work by starting a fresh replacement search.
+    - Set `max_turns: 0` on every specialist call so it completes in one invocation without a turn-cap stop or resume cycle.
 
 3. **Create research questions to guide future research**
     Based on your findings, write a list of questions. 

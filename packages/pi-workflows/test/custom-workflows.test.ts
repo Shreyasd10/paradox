@@ -55,18 +55,22 @@ describe("custom delivery workflows", () => {
 		assert.match(prompt, /Agent\(\).*legacy vocabulary/);
 	});
 
-	test("gives research-question specialists enough turns and resumes capped work", () => {
+	test("runs research-question specialists to completion in one invocation", () => {
 		const skill = verbatimSkill("create-research-questions");
-		assert.match(skill, /24 for codebase-locator, 32 for codebase-analyzer and codebase-pattern-finder/);
-		assert.match(skill, /resume that same task once with its `task_id`, `max_turns: 16`/);
-		assert.match(skill, /Do not discard its work by starting a fresh replacement search/);
+		assert.match(skill, /Set `max_turns: 0` on every specialist call/);
+		assert.doesNotMatch(skill, /resume that same task/);
 	});
 
-	test("keeps full-research specialist calls bounded while preserving capped work", () => {
+	test("runs full-research specialists to completion in one invocation", () => {
 		const skill = verbatimSkill("create-research");
-		assert.match(skill, /24 for codebase-locator, 32 for codebase-analyzer and codebase-pattern-finder/);
-		assert.match(skill, /resume that same task once with its `task_id`, `max_turns: 16`/);
-		assert.match(skill, /do not use `max_turns: 0`/);
+		assert.match(skill, /Set `max_turns: 0` on every specialist call/);
+		assert.doesNotMatch(skill, /resume that same task/);
+	});
+
+	test("host policy disables specialist turn caps", () => {
+		const policy = piTaskExecutionPolicy("/tmp/project");
+		assert.match(policy, /Set max_turns=0 on every specialist call/);
+		assert.doesNotMatch(policy, /max_turns=16|task_id/);
 	});
 
 	test("builds first-class graphs with reviewable optional paths", () => {

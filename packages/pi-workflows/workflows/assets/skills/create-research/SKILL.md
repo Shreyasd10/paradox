@@ -71,11 +71,8 @@ Then wait for the user's research query.
    - Each agent knows its job - just tell it what you're looking for
    - Don't write detailed prompts about HOW to search - the agents already know
 
-   **Delegation budgets and cap recovery:**
-   - Set `max_turns` explicitly on every specialist call: 24 for codebase-locator, 32 for codebase-analyzer and codebase-pattern-finder, and 24 for web-search-researcher.
-   - A result ending in `[Stopped: reached max_turns=...]` is incomplete and must not be treated as a finding.
-   - If a specialist reaches its cap, resume that same task once with its `task_id`, `max_turns: 16`, and an instruction to synthesize the evidence already gathered into the requested final report.
-   - Do not start a fresh replacement search and do not use `max_turns: 0`; research-stage child work must remain bounded while preserving gathered context.
+   **Delegation completion policy:**
+   - Set `max_turns: 0` on every specialist call so it completes in one invocation without a turn-cap stop or resume cycle.
 
 4. **Wait for all sub-agents to complete and synthesize findings:**
    - IMPORTANT: Wait for ALL sub-agent tasks to complete before proceeding

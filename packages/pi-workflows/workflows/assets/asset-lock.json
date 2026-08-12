@@ -167,8 +167,8 @@
     },
     {
       "path": "skills/create-research-questions/SKILL.md",
-      "bytes": 7514,
-      "sha256": "968e397074a895b4329eb74c3fa617883c8c4634d4ce6c528313eea19ca2a1a0"
+      "bytes": 7089,
+      "sha256": "345a5421b7d1b8aa490204aebe9ded87f372b9b35ad565c42fdac1dc1d34fc7d"
     },
     {
       "path": "skills/create-research-questions/references/research_questions_final_answer.md",
@@ -182,8 +182,8 @@
     },
     {
       "path": "skills/create-research/SKILL.md",
-      "bytes": 17057,
-      "sha256": "75d1f3d61bc8b3aeef260c6f1df97ace8dc141e14dafa662de9d71452e9502d4"
+      "bytes": 16537,
+      "sha256": "7bb4af898458cfcdbbd2f60743a688e871f7a741c2604278c47523e3981e565e"
     },
     {
       "path": "skills/create-research/references/research_final_answer.md",
