@@ -125,7 +125,7 @@ export function buildVerbatimSkillPrompt(args: {
 			: `- Approved upstream artifacts from earlier stages (read these exact files before searching for alternatives):\n${approvedArtifacts.map((path) => `  - ${path}`).join("\n")}`,
 		args.handoff === undefined ? "- This is the first turn for this logical stage." : `- Validate and use the handoff at ${args.handoff}.`,
 		args.answer === undefined ? "- There is no new human answer on this turn." : `- Latest human answer (verbatim):\n---\n${args.answer}\n---`,
-		"- Execute the immutable skill faithfully. When it requires waiting for the human, stop after exactly one question and return kind=question.",
+		"- Execute the immutable skill faithfully. When it requires waiting for the human, stop after exactly one question, return kind=question, and include a stable question_id.",
 		"- For a skill-defined intermediate review (including each implementation phase), return kind=approval_required before advancing.",
 		"- Return kind=stage_complete only when the entire skill stage is ready for the host's final human review.",
 		"- artifact_paths must name every authoritative artifact created or updated this turn. Use paths relative to cwd or absolute paths.",
@@ -135,13 +135,13 @@ export function buildVerbatimSkillPrompt(args: {
 	].join("\n\n");
 }
 
-function structuredOutcome(result: WorkflowTaskResult, stage: SkillStageSpec): TurnOutcome {
+function structuredOutcome(result: WorkflowTaskResult, stage: SkillStageSpec, turn: number): TurnOutcome {
 	const outcome = result.structured as TurnOutcome | undefined;
 	if (outcome === undefined || !Array.isArray(outcome.artifact_paths)) {
 		throw new DeliveryWorkflowBlocked(`${stage.label} did not return the required structured turn outcome`);
 	}
 	if (outcome.kind === "question" && (outcome.question_id === undefined || outcome.question_id.length === 0)) {
-		throw new DeliveryWorkflowBlocked(`${stage.label} returned a question without a stable question_id`);
+		return { ...outcome, question_id: `${stage.id}:question:${turn}` };
 	}
 	if (outcome.kind === "approval_required" && (outcome.gate === undefined || outcome.gate.length === 0)) {
 		throw new DeliveryWorkflowBlocked(`${stage.label} returned an approval request without a gate id`);
@@ -275,7 +275,7 @@ export async function runVerbatimSkillStage(host: DeliveryHost, stage: SkillStag
 			...(stage.model === undefined ? {} : { model: stage.model }),
 		});
 		previousSessionFile = result.sessionFile;
-		const outcome = structuredOutcome(result, stage);
+		const outcome = structuredOutcome(result, stage, turn);
 		latestHandoff = await recordTurn(host, stage, stageRoot, turn, outcome, answer);
 		for (const path of outcome.artifact_paths) stageArtifacts.add(path);
 

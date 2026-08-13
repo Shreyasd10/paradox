@@ -54040,7 +54040,7 @@ ${approvedArtifacts.map((path7) => `  - ${path7}`).join("\n")}`,
 ---
 ${args.answer}
 ---`,
-    "- Execute the immutable skill faithfully. When it requires waiting for the human, stop after exactly one question and return kind=question.",
+    "- Execute the immutable skill faithfully. When it requires waiting for the human, stop after exactly one question, return kind=question, and include a stable question_id.",
     "- For a skill-defined intermediate review (including each implementation phase), return kind=approval_required before advancing.",
     "- Return kind=stage_complete only when the entire skill stage is ready for the host's final human review.",
     "- artifact_paths must name every authoritative artifact created or updated this turn. Use paths relative to cwd or absolute paths.",
@@ -54049,13 +54049,13 @@ ${args.answer}
     "IMMUTABLE VERBATIM SKILL PAYLOAD \u2014 END"
   ].join("\n\n");
 }
-function structuredOutcome(result, stage) {
+function structuredOutcome(result, stage, turn) {
   const outcome = result.structured;
   if (outcome === void 0 || !Array.isArray(outcome.artifact_paths)) {
     throw new DeliveryWorkflowBlocked(`${stage.label} did not return the required structured turn outcome`);
   }
   if (outcome.kind === "question" && (outcome.question_id === void 0 || outcome.question_id.length === 0)) {
-    throw new DeliveryWorkflowBlocked(`${stage.label} returned a question without a stable question_id`);
+    return { ...outcome, question_id: `${stage.id}:question:${turn}` };
   }
   if (outcome.kind === "approval_required" && (outcome.gate === void 0 || outcome.gate.length === 0)) {
     throw new DeliveryWorkflowBlocked(`${stage.label} returned an approval request without a gate id`);
@@ -54172,7 +54172,7 @@ async function runVerbatimSkillStage(host, stage) {
       ...stage.model === void 0 ? {} : { model: stage.model }
     });
     previousSessionFile = result.sessionFile;
-    const outcome = structuredOutcome(result, stage);
+    const outcome = structuredOutcome(result, stage, turn);
     latestHandoff = await recordTurn(host, stage, stageRoot, turn, outcome, answer);
     for (const path7 of outcome.artifact_paths) stageArtifacts.add(path7);
     if (outcome.kind === "blocked") throw new DeliveryWorkflowBlocked(outcome.message);

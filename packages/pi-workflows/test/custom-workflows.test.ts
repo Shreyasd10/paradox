@@ -211,6 +211,44 @@ describe("custom delivery workflows", () => {
 		assert.equal(approvedHandoff.validation.approved, true);
 	});
 
+	test("continues the same stage when a question omits its stable id", async () => {
+		const root = mkdtempSync(join(tmpdir(), "question-fallback-"));
+		let call = 0;
+		const host = {
+			ctx: {
+				task: async () => {
+					call += 1;
+					return {
+						structured: {
+							kind: call === 1 ? "question" : "stage_complete",
+							message: call === 1 ? "Which option should we use?" : "Design is ready.",
+							artifact_paths: [],
+							diagnostics: [],
+						},
+						sessionFile: `/tmp/question-fallback-${call}.jsonl`,
+					};
+				},
+				ui: { input: async () => "Use option A", confirm: async () => true },
+			},
+			cwd: root,
+			task: "Design the change",
+			workflow: "rpi",
+			iterationContext: "fresh",
+			artifactRoot: root,
+			completedStages: [],
+			approvedArtifacts: [],
+		} as unknown as DeliveryHost;
+
+		await runVerbatimSkillStage(host, rpiGraph(false, false)[0]!);
+
+		assert.equal(call, 2);
+		assert.deepEqual(host.completedStages, ["create-design-discussion"]);
+		const receipt = JSON.parse(
+			readFileSync(join(root, "skill-stages/design-discussion/turn-1.json"), "utf8"),
+		) as { outcome: { question_id?: string } };
+		assert.equal(receipt.outcome.question_id, "design-discussion:question:1");
+	});
+
 	test("fork rollback continues only the matching logical-stage session", async () => {
 		const root = mkdtempSync(join(tmpdir(), "forked-stage-"));
 		const taskOptions: Array<Record<string, unknown>> = [];
