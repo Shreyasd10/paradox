@@ -123,11 +123,13 @@ function stopLoaderIfUiStopped(loader: any): boolean {
 
 (Loader.prototype as any).updateDisplay = function patchedUpdateDisplay() {
 	if (stopLoaderIfUiStopped(this)) return;
-	const frame = BRAILLE_FRAMES[this.currentFrame % BRAILLE_FRAMES.length];
-	const message = typeof this.message === "string" && RAW_ANSI_RE.test(this.message)
-		? this.message
-		: this.messageColorFn(this.message);
-	const nextText = `${this.spinnerColorFn(frame)} ${message}`;
+	const rawMessage = typeof this.message === "string" ? this.message : "";
+	const statusPlain = rawMessage.replace(/\x1b\[[0-9;]*m/g, "");
+	const isSettledStatus = /\b(?:Thought for|Turn took)\b/.test(statusPlain);
+	const message = RAW_ANSI_RE.test(rawMessage) ? rawMessage : this.messageColorFn(rawMessage);
+	const nextText = isSettledStatus
+		? (/^\s*\*/.test(statusPlain) ? message : `${this.spinnerColorFn("*")} ${message}`)
+		: `${this.spinnerColorFn(BRAILLE_FRAMES[this.currentFrame % BRAILLE_FRAMES.length])} ${message}`;
 	if ((this as any)[LOADER_LAST_TEXT] === nextText) return;
 	(this as any)[LOADER_LAST_TEXT] = nextText;
 	this.setText(nextText);
@@ -135,6 +137,12 @@ function stopLoaderIfUiStopped(loader: any): boolean {
 		(globalThis as any)[ACTIVE_UI_SYMBOL] = this.ui;
 		this.ui.requestRender();
 	}
+};
+
+Loader.prototype.render = function patchedLoaderRender(width: number) {
+	const proto = Object.getPrototypeOf(Loader.prototype);
+	const lines = typeof proto?.render === "function" ? proto.render.call(this, width) : [];
+	return Array.isArray(lines) ? lines : [];
 };
 
 Loader.prototype.start = function patchedStart() {
@@ -576,7 +584,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		if (activeCtx?.hasUI) {
-			const message = `◆ Turn took ${formatDuration(elapsed)}`;
+			const message = `* Turn took ${formatDuration(elapsed)}`;
 			lastWorkingMessage = message;
 			try {
 				activeCtx.ui.setWorkingMessage(message);

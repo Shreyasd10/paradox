@@ -71,7 +71,7 @@ const COMPONENT_PARENT = Symbol.for("pi-grok-style-tools:component-parent");
 const PARENT_TRACKING_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-parent-tracking");
 const TOOL_CACHE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-tool-cache-invalidation");
 const CUSTOM_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-custom-message-render");
-const USER_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-user-message-render-v12");
+const USER_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-user-message-render-v16");
 const USER_SENT_AT = Symbol.for("pi-grok-style-tools:user-sent-at");
 const USER_MESSAGE_HOST_RENDER = Symbol.for("pi-grok-style-tools:user-message-host-render");
 const UI_NOTIFY_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-ui-notifications-v2");
@@ -431,20 +431,32 @@ function terminalColumnCeiling(): number {
 const GROK_RIGHT_GUTTER = 2;
 
 function grokInsetWidth(width: number): number {
-	return Math.max(1, width - GROK_RIGHT_GUTTER);
+	const gutter = isEmbeddedIdeTerminal() ? 0 : GROK_RIGHT_GUTTER;
+	return Math.max(1, width - gutter);
 }
 
 /**
  * Grok `outer_hpad` (default 2; compact MIN_HPAD 1).
  * Pi already hands components the pane width, so 2+ cols reads as a huge side gap.
- * Keep a 1-col hairline so the prompt box and user band don't kiss the viewport.
+ * Keep a 1-col hairline in a native TTY. Cursor/VS Code panes already inset — extra
+ * cols stack on IDE chrome (same as grok-build `embedded()` → 0 hpad).
  */
 const GROK_OUTER_HPAD = 1;
+
+function isEmbeddedIdeTerminal(): boolean {
+	const program = (process.env.TERM_PROGRAM ?? "").toLowerCase();
+	return program === "vscode" || program === "cursor"
+		|| !!process.env.VSCODE_INJECTION
+		|| !!process.env.VSCODE_PID
+		|| !!process.env.CURSOR_TRACE_ID;
+}
 
 function grokOuterHPad(width: number): number {
 	const cols = terminalColumnCeiling() || width;
 	const w = Math.min(Math.max(1, width), Math.max(1, cols));
 	if (w < 40) return 0;
+	// IDE integrated terminals already pad the pane.
+	if (isEmbeddedIdeTerminal()) return 0;
 	return Math.min(GROK_OUTER_HPAD, Math.max(0, Math.floor((w - 1) / 2)));
 }
 
@@ -1174,7 +1186,7 @@ function safeInvalidate(ctx: any): void {
 	}
 }
 
-const ASSISTANT_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-assistant-message");
+const ASSISTANT_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-assistant-message-v4");
 const ASSISTANT_RENDER_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-assistant-message-render");
 const TOOL_EXECUTION_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-tool-execution");
 
@@ -1301,8 +1313,7 @@ function pluralizeTurns(n: number): string {
 }
 
 function thinkingSummaryStyledText(body: string): string {
-	// Preserve the visible thinking text column while omitting ∴ when collapsed.
-	return `   ${WORKED_LINE_FG}${body}${RESET}`;
+	return `${WORKED_LINE_FG}* ${body}${RESET}`;
 }
 
 function thinkingActiveSummaryText(): string {
@@ -1375,8 +1386,8 @@ function hiddenThinkingSummaryForMessage(message: any): string {
 function isHiddenThinkingPlaceholderText(child: unknown): child is InstanceType<typeof Text> {
 	if (!(child instanceof Text)) return false;
 	const plain = stripAnsi(String((child as any).text ?? "")).trim();
-	if (/^[✻∴]\s*Thinking/i.test(plain)) return true;
-	if (/^[✻∴]\s*Thought for/i.test(plain)) return true;
+	if (/^[\u273b\u2234*]\s*Thinking/i.test(plain)) return true;
+	if (/^[\u273b\u2234*]\s*Thought for/i.test(plain)) return true;
 	if (/^Thought for\b/i.test(plain)) return true;
 	if (/^Thinking\.\.\.$/i.test(plain)) return true;
 	if (/^Thinking…$/i.test(plain)) return true;
@@ -1389,7 +1400,7 @@ function messageHasThinkingContent(message: any): boolean {
 }
 
 function workedDurationText(ms: number, sessionTotalMs?: number, turns?: number): string {
-	let text = `${WORKED_LINE_FG}✻ Turn took ${formatWorkedDuration(ms)}`;
+	let text = `${WORKED_LINE_FG}* Turn took ${formatWorkedDuration(ms)}`;
 	if (typeof sessionTotalMs === "number" && typeof turns === "number" && turns > 0) {
 		text += ` (Total time ${formatSessionTotal(sessionTotalMs)} · ${pluralizeTurns(turns)})`;
 	}
@@ -1401,7 +1412,38 @@ function inlineWorkedDurationText(ms: number, sessionTotalMs?: number, turns?: n
 }
 
 function isWorkedDurationLine(line: string): boolean {
-	return line.includes(WORKED_DURATION_MARKER) && /^✻ Turn took [^\r\n]+$/.test(stripAnsi(line).trim());
+	if (!line.includes(WORKED_DURATION_MARKER)) return false;
+	const plain = stripAnsi(line).trim();
+	const idx = plain.indexOf("Turn took ");
+	if (idx < 0) return false;
+	const prefix = plain.slice(0, idx).replace(/\\/g, "").trim();
+	if (!prefix) return true;
+	return prefix.replace(/[\u25cf\u25cb\u25c9\u25c6\u25c8\u273b*]/g, "").trim().length === 0;
+}
+
+function formatWorkedDurationDisplay(line: string): string {
+	const plain = stripAnsi(line).trim();
+	const idx = plain.indexOf("Turn took ");
+	const rest = idx >= 0 ? plain.slice(idx) : plain;
+	return `${WORKED_LINE_FG}* ${rest}${RESET}`;
+}
+
+function thoughtSummaryRest(plain: string): string | undefined {
+	const thoughtIdx = plain.indexOf("Thought for ");
+	if (thoughtIdx >= 0) return plain.slice(thoughtIdx);
+	if (/^(?:Thinking…|Thinking\.\.\.)$/i.test(plain.replace(/^[\u25cf\u25cb\u25c9\u25c6\u25c8\u273b\u2234*]\s+/, ""))) {
+		return "Thinking…";
+	}
+	return undefined;
+}
+
+function isThoughtSummaryLine(line: string): boolean {
+	return thoughtSummaryRest(stripAnsi(line).trim()) !== undefined;
+}
+
+function formatThoughtSummaryDisplay(line: string): string {
+	const rest = thoughtSummaryRest(stripAnsi(line).trim()) ?? stripAnsi(line).trim();
+	return `${WORKED_LINE_FG}* ${rest}${RESET}`;
 }
 
 function stripWorkedDurationLine(text: string): string {
@@ -1753,6 +1795,9 @@ class DottedParagraph {
 		const rendered = displayLines.map((line: string) => {
 			if (!stripAnsi(line).trim()) return `   ${line}`;
 			if (isCodeBoxChromeLine(line)) return `   ${line}`;
+			// Timing rows: keep ASCII * and drop ●/✻/◆ which read as a hollow blob in IDE fonts.
+			if (isWorkedDurationLine(line)) return formatWorkedDurationDisplay(line);
+			if (isThoughtSummaryLine(line)) return formatThoughtSummaryDisplay(line);
 			if (!dotPlaced) {
 				dotPlaced = true;
 				return ` ● ${line}`;
@@ -1844,9 +1889,9 @@ class ThinkingParagraph {
 			return this.cachedLines;
 		}
 		const md = this.thinkingMarkdown();
-		// " ∴ " = 1 margin + symbol + space = 3 visible chars
+		// " * " = 1 margin + star + space = 3 visible chars
 		const PREFIX_W = 3;
-		const prefix = `${WORKED_LINE_FG}∴${RESET}`;
+		const prefix = `${WORKED_LINE_FG}*${RESET}`;
 		if (safeWidth <= PREFIX_W) {
 			this.cachedWidth = width;
 			this.cachedLines = [clampLineWidth(` ${prefix} `, safeWidth)];
@@ -2026,7 +2071,7 @@ function resolveUserSentAt(comp: any, text: string): number {
 	return comp[USER_SENT_AT];
 }
 
-/** Grok UserPromptBlock: elevated bg on content rows only — no ╭─╮ card, no extra vpad. */
+/** Grok UserPromptBlock: elevated bg on content rows, 1-row grey vpad below. */
 function paintUserBand(
 	bodies: string[],
 	width: number,
@@ -2038,28 +2083,33 @@ function paintUserBand(
 	const g = Math.max(0, gutter);
 	const innerW = Math.max(1, width - g * 2);
 	const side = " ".repeat(g);
+	const fillRow = (body: string): string => {
+		const restored = bgAnsi
+			? reapplyBgAfterReset(stripBackgroundAnsi(body), bgAnsi)
+			: stripBackgroundAnsi(body);
+		const clipped = clampLineWidth(restored, innerW);
+		const pad = " ".repeat(Math.max(0, innerW - visibleWidth(clipped)));
+		return clampLineWidth(`${side}${bgAnsi}${clipped}${pad}${TRANSPARENT_RESET}${side}`, width);
+	};
 	const lines = bodies.length > 0 ? bodies : [""];
 	const out: string[] = [];
 	for (let i = 0; i < lines.length; i++) {
 		let body = lines[i];
 		if (i === 0 && timeLabel) {
 			const stamp = `${timeFg}${timeLabel}`;
-			const stampW = visibleWidth(` ${timeLabel}`);
+			const timeRightInset = 2;
+			const stampW = visibleWidth(` ${timeLabel}`) + timeRightInset;
 			const budget = Math.max(1, innerW - stampW);
 			const restored = bgAnsi
 				? reapplyBgAfterReset(stripBackgroundAnsi(body), bgAnsi)
 				: stripBackgroundAnsi(body);
 			const clipped = clampLineWidth(restored, budget);
 			const pad = " ".repeat(Math.max(0, budget - visibleWidth(clipped)));
-			body = `${clipped}${pad} ${stamp}`;
+			body = `${clipped}${pad} ${stamp}${" ".repeat(timeRightInset)}`;
 		}
-		const restored = bgAnsi
-			? reapplyBgAfterReset(stripBackgroundAnsi(body), bgAnsi)
-			: stripBackgroundAnsi(body);
-		const clipped = clampLineWidth(restored, innerW);
-		const pad = " ".repeat(Math.max(0, innerW - visibleWidth(clipped)));
-		out.push(clampLineWidth(`${side}${bgAnsi}${clipped}${pad}${TRANSPARENT_RESET}${side}`, width));
+		out.push(fillRow(body));
 	}
+	out.push(fillRow(""));
 	return out;
 }
 
@@ -2283,7 +2333,7 @@ function patchAssistantMessages(): void {
 		const workedTurns = typeof explicitTurns === "number" ? explicitTurns : userTurnCount;
 		const hasAssistantText = message.content.some((block: any) => block?.type === "text" && typeof block.text === "string" && block.text.trim());
 		if (typeof workedDuration === "number" && isFinalAssistantMessage && hasAssistantText && !hasWorkedDurationLine(message)) {
-			container.children.push(new Spacer(1), new Text(workedDurationText(workedDuration, workedSessionTotal, workedTurns), 1, 0));
+			container.children.push(new Spacer(1), new Text(workedDurationText(workedDuration, workedSessionTotal, workedTurns), 0, 0));
 		}
 	};
 	proto[ASSISTANT_PATCH_FLAG] = true;
