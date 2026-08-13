@@ -28,7 +28,7 @@
 		"bgPanel": "#141414",
 		"bgCode": "#1c1c1c",
 		"bgHighlight": "#242424",
-		"userMsgBg": "#1c1c1c",
+		"userMsgBg": "#242424",
 		"selectedBg": "#363636",
 		"toolPendingBg": "#111111",
 		"toolSuccessBg": "#0f1a10",

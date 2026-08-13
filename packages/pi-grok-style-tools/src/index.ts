@@ -71,13 +71,14 @@ const COMPONENT_PARENT = Symbol.for("pi-grok-style-tools:component-parent");
 const PARENT_TRACKING_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-parent-tracking");
 const TOOL_CACHE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-tool-cache-invalidation");
 const CUSTOM_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-custom-message-render");
-const USER_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-user-message-render-v9");
+const USER_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-user-message-render-v12");
+const USER_SENT_AT = Symbol.for("pi-grok-style-tools:user-sent-at");
 const USER_MESSAGE_HOST_RENDER = Symbol.for("pi-grok-style-tools:user-message-host-render");
 const UI_NOTIFY_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-ui-notifications-v2");
 const WRAP_MARK = "\uE000";
 const KITTY_IMAGE_PREFIX = "\x1b_G";
 const ITERM2_IMAGE_PREFIX = "\x1b]1337;File=";
-let toolBackgroundMode: "default" | "transparent" | "outlines" = "outlines";
+let toolBackgroundMode: "default" | "transparent" | "outlines" = "transparent";
 
 interface SettingsFile {
 	toolBackground?: "default" | "transparent" | "outlines" | "border";
@@ -183,7 +184,7 @@ function syncToolBackgroundMode(): void {
 	const settings = readSettings();
 	// Backward compat: "border" was renamed to "outlines"
 	const raw = settings.toolBackground === "border" ? "outlines" : settings.toolBackground;
-	toolBackgroundMode = raw ?? "outlines";
+	toolBackgroundMode = raw ?? "transparent";
 }
 
 function setThemeBg(theme: unknown, key: string, value: string): void {
@@ -216,7 +217,7 @@ function applyToolBackgroundMode(theme: unknown): void {
 	const globalTheme = getGlobalPiTheme();
 	if (globalTheme) targets.add(globalTheme);
 	for (const t of targets) {
-		setThemeBg(t, "userMessageBg", TRANSPARENT_BG);
+		// Keep theme userMessageBg — Grok paints sent prompts as an elevated grey band.
 		if (toolBackgroundMode === "default") continue;
 		setThemeBg(t, "toolPendingBg", TRANSPARENT_BG);
 		setThemeBg(t, "toolSuccessBg", TRANSPARENT_BG);
@@ -426,6 +427,28 @@ function terminalColumnCeiling(): number {
 	return Number.isFinite(cols) && (cols as number) > 0 ? (cols as number) : 0;
 }
 
+/** Grok scrollback keeps a 2-col gutter so tools/thoughts/answers don't kiss the edge. */
+const GROK_RIGHT_GUTTER = 2;
+
+function grokInsetWidth(width: number): number {
+	return Math.max(1, width - GROK_RIGHT_GUTTER);
+}
+
+/**
+ * Grok `outer_hpad` (default 2; compact MIN_HPAD 1).
+ * Pi already hands components the pane width, so 2+ cols reads as a huge side gap.
+ * Keep a 1-col hairline so the prompt box and user band don't kiss the viewport.
+ */
+const GROK_OUTER_HPAD = 1;
+
+function grokOuterHPad(width: number): number {
+	const cols = terminalColumnCeiling() || width;
+	const w = Math.min(Math.max(1, width), Math.max(1, cols));
+	if (w < 40) return 0;
+	return Math.min(GROK_OUTER_HPAD, Math.max(0, Math.floor((w - 1) / 2)));
+}
+
+
 function clampLineWidth(line: string, width: number): string {
 	if (width <= 0) return "";
 	// Hard ceiling: never emit a line wider than the real terminal. pi sometimes
@@ -598,7 +621,8 @@ function getToolGroupOverallStatus(tools: any[]): ToolStatus {
 function groupStatusLight(status: ToolStatus): string {
 	const color = status === "success" ? TOOL_STATUS_SUCCESS : status === "error" ? TOOL_STATUS_ERROR : TOOL_STATUS_PENDING;
 	if (status === "pending") {
-		const accent = "\x1b[38;2;187;154;247m";
+		const theme = getGlobalPiTheme() as any;
+		const accent = safeFgAnsi(theme, "accent") ?? "\x1b[38;2;196;167;231m";
 		return isBlinkOn() ? `${accent}◆${TRANSPARENT_RESET}` : `${TOOL_STATUS_PENDING}◆${TRANSPARENT_RESET}`;
 	}
 	return `${color}◆${TRANSPARENT_RESET}`;
@@ -858,9 +882,10 @@ class ToolGroupComponent extends Container {
 		if (status.success) countParts.push(statusText("success", status.success));
 		if (status.error) countParts.push(statusText("error", status.error));
 		const countsText = countParts.join(`${TRANSPARENT_RESET} • `);
+		const inset = grokInsetWidth(safeWidth);
 		const summary = ` ${light} ${summaryLabel} ${countsText}${names ? ` ${TRANSPARENT_RESET}• ${names}` : ""}${toolOutputDetailHint(undefined as any, this.expanded, true)}`;
-		const lines = [" ".repeat(safeWidth), clampLineWidth(summary, safeWidth)];
-		const childWidth = Math.max(1, safeWidth - 6);
+		const lines = ["", clampLineWidth(summary, inset)];
+		const childWidth = Math.max(1, inset - 6);
 		const total = this.tools.length;
 
 		for (let index = 0; index < total; index++) {
@@ -868,9 +893,9 @@ class ToolGroupComponent extends Container {
 			const rawLines = this.expanded
 				? getExpandedToolGroupLines(tool, childWidth, groupedName ? label : undefined)
 				: [getCompactToolLine(tool, childWidth, groupedName ? label : undefined)];
-			const branched = formatBranchedToolLines(rawLines, index, total, safeWidth, getToolStatusForGroup(tool));
+			const branched = formatBranchedToolLines(rawLines, index, total, inset, getToolStatusForGroup(tool));
 			for (let i = 0; i < branched.length; i++) {
-				lines.push(clampLineWidth(branched[i], safeWidth));
+				lines.push(clampLineWidth(branched[i], inset));
 			}
 		}
 
@@ -1050,19 +1075,19 @@ function patchGlobalToolBorders(): void {
 			return rendered;
 		}
 		const indentTool = shouldIndentToolExecution(this);
+		const inset = grokInsetWidth(width);
 		const core = textLines.map((line) => {
 			const normalized = normalizeLeadingCheckGlyph(line);
-			return clampLineWidth(stripOuterBackgroundAnsi(indentTool && normalized ? ` ${normalized}` : normalized), width);
+			return clampLineWidth(trimAnsiRight(stripOuterBackgroundAnsi(indentTool && normalized ? ` ${normalized}` : normalized)), inset);
 		});
-		const spacerLine = " ".repeat(width);
 		let result: string[];
 
 		if (toolBackgroundMode === "outlines") {
-			const ruleWidth = Math.max(1, width);
+			const ruleWidth = Math.max(1, inset);
 			const framed = core.length > 0 ? [borderLine(ruleWidth), ...core, borderLine(ruleWidth)] : [];
-			result = [spacerLine, ...framed, ...imageLines];
+			result = ["", ...framed, ...imageLines];
 		} else {
-			result = [spacerLine, ...core, ...imageLines];
+			result = ["", ...core, ...imageLines];
 		}
 
 		(this as any)[TOOL_RENDER_CACHE] = { width, mode: toolBackgroundMode, lines: result, ...branchCache };
@@ -1316,7 +1341,7 @@ class HiddenThinkingSummary {
 			this.cachedLines = [""];
 			return this.cachedLines;
 		}
-		const line = padRenderedLineToWidth(this.summaryText, safeWidth);
+		const line = clampLineWidth(this.summaryText, grokInsetWidth(safeWidth));
 		this.cachedWidth = width;
 		this.cachedLines = [line];
 		return this.cachedLines;
@@ -1716,7 +1741,7 @@ class DottedParagraph {
 			this.cachedLines = [clampLineWidth(" ● ", safeWidth)];
 			return this.cachedLines;
 		}
-		const contentWidth = safeWidth - PREFIX_W;
+		const contentWidth = grokInsetWidth(safeWidth) - PREFIX_W;
 		const lines = this.segments.flatMap((segment) => {
 			return segment.kind === "math"
 				? renderMathBlock(segment.raw, contentWidth, this.markdownTheme)
@@ -1733,10 +1758,7 @@ class DottedParagraph {
 				return ` ● ${line}`;
 			}
 			return `   ${line}`;
-		}).map((line) => {
-			const gap = safeWidth - visibleWidth(line);
-			return gap > 0 ? line + " ".repeat(gap) : gap < 0 ? truncateToWidth(line, safeWidth, "", false) : line;
-		});
+		}).map((line) => clampLineWidth(line, grokInsetWidth(safeWidth)));
 		this.cachedWidth = width;
 		this.cachedLines = rendered;
 		return rendered;
@@ -1830,7 +1852,7 @@ class ThinkingParagraph {
 			this.cachedLines = [clampLineWidth(` ${prefix} `, safeWidth)];
 			return this.cachedLines;
 		}
-		const lines = sanitizeRenderedTextBlockLines(md.render(safeWidth - PREFIX_W), safeWidth - PREFIX_W);
+		const lines = sanitizeRenderedTextBlockLines(md.render(grokInsetWidth(safeWidth) - PREFIX_W), grokInsetWidth(safeWidth) - PREFIX_W);
 		let symbolPlaced = false;
 		const rendered = lines.map((line: string) => {
 			if (!symbolPlaced && stripAnsi(line).trim()) {
@@ -1838,7 +1860,7 @@ class ThinkingParagraph {
 				return ` ${prefix} ${line}`;
 			}
 			return `   ${line}`;
-		}).map((line) => clampLineWidth(line, safeWidth));
+		}).map((line) => clampLineWidth(line, grokInsetWidth(safeWidth)));
 		this.cachedWidth = width;
 		this.cachedLines = rendered;
 		this.chromeEpoch = _toolBranchVisualEpoch;
@@ -1928,7 +1950,117 @@ function trimAnsiRight(text: string): string {
 }
 
 function cleanUserMessageLine(line: string): string {
-	return `${TRANSPARENT_BG}${trimAnsiRight(stripBackgroundAnsi(stripOsc133Zones(line)))}${TRANSPARENT_BG}`;
+	return trimAnsiRight(stripBackgroundAnsi(stripOsc133Zones(line)));
+}
+
+function reapplyBgAfterReset(text: string, bgAnsi: string): string {
+	if (!bgAnsi) return text;
+	return text
+		.replace(/\x1b\[0m/g, `\x1b[0m${bgAnsi}`)
+		.replace(/\x1b\[49m/g, bgAnsi);
+}
+
+function userMessageBandBg(theme: any): string {
+	return safeBgAnsi(theme, "userMessageBg") ?? "";
+}
+
+function userPromptArrow(theme: any): string {
+	const name = typeof theme?.name === "string" ? theme.name : "";
+	const key = /oscura/i.test(name) ? "accent" : "userMessageText";
+	if (theme && typeof theme.fg === "function") return theme.fg(key, "❯ ");
+	return "❯ ";
+}
+
+let _userMessageTimestamps: { text: string; ts: number }[] = [];
+
+function extractUserMessageText(msg: any): string {
+	if (!msg) return "";
+	if (typeof msg.content === "string") return msg.content;
+	if (Array.isArray(msg.content)) {
+		return msg.content
+			.filter((b: any) => b && typeof b.text === "string")
+			.map((b: any) => b.text as string)
+			.join("");
+	}
+	return "";
+}
+
+function normalizeTimestampMs(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value < 1e12 ? value * 1000 : value;
+	}
+	if (typeof value === "string" && value.trim()) {
+		const n = Date.parse(value);
+		return Number.isFinite(n) ? n : undefined;
+	}
+	return undefined;
+}
+
+function indexUserMessageTimestamps(messages: unknown[]): void {
+	_userMessageTimestamps = [];
+	if (!Array.isArray(messages)) return;
+	for (const msg of messages) {
+		const rec = msg as any;
+		if (!rec || rec.role !== "user") continue;
+		const text = extractUserMessageText(rec);
+		const ts = normalizeTimestampMs(rec.timestamp);
+		if (text && ts !== undefined) _userMessageTimestamps.push({ text, ts });
+	}
+}
+
+function formatSentClock(ms: number): string {
+	const d = new Date(ms);
+	if (Number.isNaN(d.getTime())) return "";
+	return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function resolveUserSentAt(comp: any, text: string): number {
+	if (typeof comp[USER_SENT_AT] === "number") return comp[USER_SENT_AT];
+	for (let i = _userMessageTimestamps.length - 1; i >= 0; i--) {
+		if (_userMessageTimestamps[i].text === text) {
+			comp[USER_SENT_AT] = _userMessageTimestamps[i].ts;
+			return _userMessageTimestamps[i].ts;
+		}
+	}
+	comp[USER_SENT_AT] = Date.now();
+	return comp[USER_SENT_AT];
+}
+
+/** Grok UserPromptBlock: elevated bg on content rows only — no ╭─╮ card, no extra vpad. */
+function paintUserBand(
+	bodies: string[],
+	width: number,
+	bgAnsi: string,
+	gutter: number,
+	timeLabel: string,
+	timeFg: string,
+): string[] {
+	const g = Math.max(0, gutter);
+	const innerW = Math.max(1, width - g * 2);
+	const side = " ".repeat(g);
+	const lines = bodies.length > 0 ? bodies : [""];
+	const out: string[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		let body = lines[i];
+		if (i === 0 && timeLabel) {
+			const stamp = `${timeFg}${timeLabel}`;
+			const stampW = visibleWidth(` ${timeLabel}`);
+			const budget = Math.max(1, innerW - stampW);
+			const restored = bgAnsi
+				? reapplyBgAfterReset(stripBackgroundAnsi(body), bgAnsi)
+				: stripBackgroundAnsi(body);
+			const clipped = clampLineWidth(restored, budget);
+			const pad = " ".repeat(Math.max(0, budget - visibleWidth(clipped)));
+			body = `${clipped}${pad} ${stamp}`;
+		}
+		const restored = bgAnsi
+			? reapplyBgAfterReset(stripBackgroundAnsi(body), bgAnsi)
+			: stripBackgroundAnsi(body);
+		const clipped = clampLineWidth(restored, innerW);
+		const pad = " ".repeat(Math.max(0, innerW - visibleWidth(clipped)));
+		out.push(clampLineWidth(`${side}${bgAnsi}${clipped}${pad}${TRANSPARENT_RESET}${side}`, width));
+	}
+	return out;
 }
 
 function borderedUserMessageLine(line: string, width: number): string {
@@ -1995,11 +2127,11 @@ function patchUserMessageRender(): void {
 		if (cached) return cached;
 
 		const borderWidth = Math.max(1, width);
-		const innerWidth = Math.max(1, borderWidth - 4);
-		const textWidth = Math.max(1, innerWidth - 2);
+		const gutter = grokOuterHPad(borderWidth);
+		const bandWidth = Math.max(1, borderWidth - gutter * 2);
+		const textWidth = Math.max(1, bandWidth - 2);
 
-		// Render text directly — skip UserMessageComponent's Box (padding + bg)
-		// so we never nest "box inside box" across /reload patch stacks.
+		// Grok scrollback: elevated grey band + ❯, no labeled User box.
 		const rawText = typeof (this as any).text === "string" ? (this as any).text : "";
 		const markdownTheme = (this as any).markdownTheme;
 		const theme = (this as any).theme ?? getGlobalPiTheme();
@@ -2055,18 +2187,14 @@ function patchUserMessageRender(): void {
 			}
 		}
 
-		const arrow = theme && typeof theme.fg === "function"
-			? theme.fg("userMessageText", "❯ ")
-			: "❯ ";
-		const bordered = body.map((line: string, i: number) => {
-			const prefixed = `${i === 0 ? arrow : "  "}${line}`;
-			return borderedUserMessageLine(prefixed, borderWidth);
-		});
-		const rendered = [
-			roundedUserBorder(borderWidth, true),
-			...bordered,
-			roundedUserBorder(borderWidth, false),
-		].map((line) => clampLineWidth(line, borderWidth));
+		const bgAnsi = userMessageBandBg(theme);
+		const arrow = userPromptArrow(theme);
+		const timeFg = safeFgAnsi(theme, "muted") ?? safeFgAnsi(theme, "borderMuted") ?? BORDER_COLOR;
+		const sentAt = resolveUserSentAt(this, rawText);
+		const timeLabel = formatSentClock(sentAt);
+		const bodies = body.map((line: string, i: number) => `${i === 0 ? arrow : "  "}${line}`);
+		const rendered = paintUserBand(bodies, borderWidth, bgAnsi, gutter, timeLabel, timeFg)
+			.map((line) => clampLineWidth(line, borderWidth));
 		return storeMessageRenderCache(this, width, applyTerminalCopyZones(rendered));
 	};
 	proto[USER_MESSAGE_PATCH_FLAG] = true;
@@ -2264,8 +2392,8 @@ function toolHeader(tool: string, summary: string, theme: Theme, prefix = ""): s
 	const status = prefix.trim() ? prefix : `${theme.fg("muted", "◆")} `;
 	const head = collapseLeadingToolDiamonds(`${status}${label}`);
 	if (!summary) return head;
-	// Paths/commands get accent (orange path vibe via accent on grok-dark for detail)
-	return `${head} ${WRAP_MARK}${theme.fg("accent", summary)}`;
+	// Paths/commands use warning (Grok `path` — amber on Oscura, gold on GrokNight).
+	return `${head} ${WRAP_MARK}${theme.fg("warning", summary)}`;
 }
 
 /** Keep a single leading ◆ (with its ANSI); drop any extras before the label. */
@@ -2990,6 +3118,73 @@ function themeBgRgb(theme: any, key: string): Rgb | null {
 	return ansi ? parseAnsiRgb(ansi) : null;
 }
 
+function rgbToHex(rgb: Rgb): string {
+	const h = (n: number) => Math.max(0, Math.min(255, n | 0)).toString(16).padStart(2, "0");
+	return `#${h(rgb.r)}${h(rgb.g)}${h(rgb.b)}`;
+}
+
+const PAGE_BG_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+let _osc11PageBgHex: string | null = null;
+
+function wrapOscForTmux(seq: string): string {
+	if (!process.env.TMUX) return seq;
+	return `\x1bPtmux;\x1b${seq}\x1b\\`;
+}
+
+function writeOsc(seq: string): void {
+	try {
+		const payload = wrapOscForTmux(seq);
+		const stream = process.stderr.isTTY ? process.stderr : process.stdout;
+		stream.write(payload);
+	} catch {
+		/* noop */
+	}
+}
+
+function pageBgHexFromThemeJson(raw: unknown): string | null {
+	if (!raw || typeof raw !== "object") return null;
+	const json = raw as { vars?: Record<string, unknown>; export?: { pageBg?: unknown } };
+	const vars = json.vars && typeof json.vars === "object" ? json.vars : {};
+	const pageKey = typeof json.export?.pageBg === "string" ? json.export.pageBg : null;
+	for (const hex of [pageKey ? vars[pageKey] : null, vars.base, vars.bg]) {
+		if (typeof hex === "string" && PAGE_BG_HEX_RE.test(hex)) return hex;
+	}
+	return null;
+}
+
+function resolvePageBgHex(theme: any): string | null {
+	const name = typeof theme?.name === "string" ? theme.name : "";
+	const sourcePath = typeof theme?.sourcePath === "string" ? theme.sourcePath : "";
+	for (const p of [sourcePath, name ? join(getAgentDir(), "themes", `${name}.json`) : ""].filter(Boolean)) {
+		try {
+			if (!existsSync(p)) continue;
+			const hex = pageBgHexFromThemeJson(JSON.parse(readFileSync(p, "utf8")));
+			if (hex) return hex;
+		} catch {
+			/* next */
+		}
+	}
+	const rgb = themeBgRgb(theme, "customMessageBg");
+	return rgb ? rgbToHex(rgb) : null;
+}
+
+/** Grok fills every cell with theme.bg_base. Pi leaves empty cells on the host default — paint it via OSC 11. */
+function applyTerminalPageBackground(theme: any): void {
+	if (!theme) return;
+	if (!process.stderr.isTTY && !process.stdout.isTTY) return;
+	const hex = resolvePageBgHex(theme);
+	if (!hex) return;
+	if (_osc11PageBgHex === hex) return;
+	_osc11PageBgHex = hex;
+	writeOsc(`\x1b]11;${hex}\x07`);
+}
+
+function restoreTerminalPageBackground(): void {
+	if (!_osc11PageBgHex) return;
+	_osc11PageBgHex = null;
+	writeOsc("\x1b]110\x07");
+}
+
 // Cache theme identity so we only recompute on theme change. The Theme
 // object is reused across renders within a single session unless the user
 // switches themes via the picker.
@@ -3150,8 +3345,9 @@ function syncOutlineChromeFromBranch(theme?: any): void {
 	const outline = outlineChromeAnsiFromBranch(theme);
 	const prevBorder = BORDER_COLOR;
 	BORDER_COLOR = outline;
-	WORKED_LINE_FG = outline;
 	CODE_BLOCK_LANG_FG = outline;
+	const thought = theme ? safeFgAnsi(theme, "thinkingText") : null;
+	if (thought) WORKED_LINE_FG = thought;
 	if (outline !== prevBorder) bumpToolBranchVisualEpoch();
 }
 
@@ -3410,6 +3606,7 @@ function resetThemePalette(): void {
 
 function applyThemePaletteIfNeeded(theme: any): void {
 	if (!theme) return;
+	applyTerminalPageBackground(theme);
 	if (!themeAdaptiveEnabled()) {
 		applyToolBranchColor(theme);
 		syncOutlineChromeFromBranch(theme);
@@ -4656,6 +4853,7 @@ function registerThinkingLabels(pi: ExtensionAPI): void {
 	pi.on("context", async (event) => {
 		const messages = (event as any)?.messages;
 		if (!Array.isArray(messages)) return;
+		indexUserMessageTimestamps(messages);
 		// Seed session-wide accumulators from the full message history (covers
 		// /resume — past prompts and the original session start time are included).
 		// Values are monotonic, so recomputing on every fire stays stable.
@@ -4991,22 +5189,54 @@ function trimInputRow(raw: string): string {
 	return raw.replace(head, "").replace(/^\+-/, "").replace(head, "").replace(tailMarker, "");
 }
 
+function grokPromptChrome(theme: any = getGlobalPiTheme()): {
+	borderIdle: string;
+	borderActive: string;
+	fg: string;
+	placeholder: string;
+	fill: string;
+	arrow: string;
+} {
+	return {
+		borderIdle: safeFgAnsi(theme, "borderMuted") ?? GROK_PROMPT_BORDER,
+		// Grok uses prompt_border_active (brighter grey), not the purple accent.
+		borderActive: safeFgAnsi(theme, "border") ?? GROK_PROMPT_BORDER_ACTIVE,
+		fg: safeFgAnsi(theme, "userMessageText") ?? GROK_PROMPT_FG,
+		placeholder: safeFgAnsi(theme, "muted") ?? GROK_PROMPT_PLACEHOLDER,
+		fill: "",
+		arrow: userPromptArrow(theme),
+	};
+}
+
 class GrokPromptEditor extends CustomEditor {
 	render(width: number): string[] {
-		const w = Math.max(1, width);
+		(this as any).paddingX = 0;
+		const gutter = grokOuterHPad(width);
+		const w = Math.max(1, width - gutter * 2);
+		const side = " ".repeat(gutter);
+		const finish = (rows: string[]) => rows.map((line) => {
+			const vw = visibleWidth(line);
+			const inner = vw === w ? line : vw < w ? `${line}${" ".repeat(w - vw)}` : truncateToWidth(line, w, "");
+			return `${side}${inner}${side}`;
+		});
 		const focused = !!(this as any).focused;
-		const borderAnsi = focused ? GROK_PROMPT_BORDER_ACTIVE : GROK_PROMPT_BORDER;
-		// Outer box: ╭─╮ uses full width. Inner content between "│ " and " │" is w-4.
+		const chrome = grokPromptChrome(getGlobalPiTheme() ?? (this as any)._piTheme);
+		const borderAnsi = focused ? chrome.borderActive : chrome.borderIdle;
+		const { fg, placeholder, fill, arrow } = chrome;
 		const contentWidth = Math.max(1, w - 4);
-		// Ask the base editor to layout for the inner content width so we don't
-		// wrap already-full-width lines with extra chrome (that caused 76 > 70).
+		const top = `${fill}${borderAnsi}╭${"─".repeat(Math.max(0, w - 2))}╮${TRANSPARENT_RESET}`;
+		const bottom = `${fill}${borderAnsi}╰${"─".repeat(Math.max(0, w - 2))}╯${TRANSPARENT_RESET}`;
+		const frameRow = (body: string) => {
+			const padded = `${reapplyBgAfterReset(body, fill)}${" ".repeat(Math.max(0, contentWidth - visibleWidth(body)))}`;
+			return `${fill}${borderAnsi}│${TRANSPARENT_RESET}${fill} ${padded} ${fill}${borderAnsi}│${TRANSPARENT_RESET}`;
+		};
 		const lines = super.render(contentWidth);
 		if (!Array.isArray(lines) || lines.length === 0) {
-			return [
-				truncateToWidth(`${borderAnsi}╭${"─".repeat(Math.max(0, w - 2))}╮${RESET}`, w, ""),
-				truncateToWidth(`${borderAnsi}│${RESET} ${GROK_PROMPT_FG}❯ ${RESET}${" ".repeat(Math.max(0, contentWidth - 2))} ${borderAnsi}│${RESET}`, w, ""),
-				truncateToWidth(`${borderAnsi}╰${"─".repeat(Math.max(0, w - 2))}╯${RESET}`, w, ""),
-			];
+			return finish([
+				truncateToWidth(top, w, ""),
+				truncateToWidth(frameRow(`${fg}${arrow}${RESET}${fill}`), w, ""),
+				truncateToWidth(bottom, w, ""),
+			]);
 		}
 
 		const content: string[] = [];
@@ -5017,13 +5247,10 @@ class GrokPromptEditor extends CustomEditor {
 				content.push(plain.trim());
 				continue;
 			}
-			// Editor pads to contentWidth; keep as-is (including cursor/ANSI).
 			content.push(line ?? "");
 		}
 		if (content.length === 0) content.push("");
 
-		// omp renders its status line as the first editor row; show it below the
-		// box instead of inside it. The cursor/input rows stay in the box.
 		const statusRows: string[] = [];
 		let inputRows = content;
 		if (isStatusRow(content[0] ?? "")) {
@@ -5032,41 +5259,29 @@ class GrokPromptEditor extends CustomEditor {
 			if (inputRows.length === 0) inputRows.push("");
 		}
 
-		const out: string[] = [];
-		out.push(truncateToWidth(`${borderAnsi}╭${"─".repeat(Math.max(0, w - 2))}╮${RESET}`, w, ""));
-
+		const out: string[] = [truncateToWidth(top, w, "")];
 		let firstContent = true;
 		for (const raw of inputRows) {
 			const plain = stripAnsi(raw);
 			const isScroll = (plain.includes("↑") || plain.includes("↓")) && !/\x1b\[/.test(raw);
 			let body: string;
 			if (isScroll) {
-				body = truncateToWidth(`${GROK_PROMPT_PLACEHOLDER}${plain}${RESET}`, contentWidth, "");
+				body = truncateToWidth(`${placeholder}${plain}${RESET}${fill}`, contentWidth, "");
 			} else if (firstContent) {
 				firstContent = false;
-				// ❯ takes 2 columns; trim editor line to leave room then prefix.
 				const inner = truncateToWidth(trimInputRow(raw), Math.max(1, contentWidth - 2), "");
-				body = truncateToWidth(`${GROK_PROMPT_FG}❯ ${RESET}${inner}`, contentWidth, "");
+				body = truncateToWidth(`${fg}${arrow}${RESET}${fill}${inner}`, contentWidth, "");
 			} else {
 				const inner = truncateToWidth(trimInputRow(raw), Math.max(1, contentWidth - 2), "");
 				body = truncateToWidth(`  ${inner}`, contentWidth, "");
 			}
-			const pad = Math.max(0, contentWidth - visibleWidth(body));
-			const framed = `${borderAnsi}│${RESET} ${body}${" ".repeat(pad)} ${borderAnsi}│${RESET}`;
-			out.push(truncateToWidth(framed, w, ""));
+			out.push(truncateToWidth(frameRow(body), w, ""));
 		}
-
-		out.push(truncateToWidth(`${borderAnsi}╰${"─".repeat(Math.max(0, w - 2))}╯${RESET}`, w, ""));
-		// Status line underneath the box (base render already styles it).
+		out.push(truncateToWidth(bottom, w, ""));
 		for (const statusRaw of statusRows) {
 			out.push(truncateToWidth(statusRaw, w, ""));
 		}
-		return out.map((line) => {
-			const vw = visibleWidth(line);
-			if (vw === w) return line;
-			if (vw < w) return `${line}${" ".repeat(w - vw)}`;
-			return truncateToWidth(line, w, "");
-		});
+		return finish(out);
 	}
 }
 
@@ -5076,16 +5291,9 @@ function installGrokPromptEditor(ctx: { ui?: any; hasUI?: boolean }): void {
 		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: any) => {
 			const editor = new GrokPromptEditor(tui, theme, keybindings);
 			if ("promptPrefix" in editor) (editor as any).promptPrefix = "";
-			// Prefer theme border when available
-			try {
-				const uiTheme = ctx.ui?.theme;
-				if (uiTheme && typeof uiTheme.getFgAnsi === "function") {
-					const idle = uiTheme.getFgAnsi("borderMuted") || uiTheme.getFgAnsi("border");
-					const active = uiTheme.getFgAnsi("borderAccent") || uiTheme.getFgAnsi("accent");
-					if (typeof idle === "string") (editor as any)._grokBorderIdle = idle;
-					if (typeof active === "string") (editor as any)._grokBorderActive = active;
-				}
-			} catch { /* noop */ }
+			if (typeof (editor as any).setPaddingX === "function") (editor as any).setPaddingX(0);
+			else (editor as any).paddingX = 0;
+			(editor as any)._piTheme = ctx.ui?.theme ?? getGlobalPiTheme();
 			return editor;
 		});
 	} catch { /* noop */ }
@@ -6034,6 +6242,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 	pi.on("session_shutdown", async () => {
+		restoreTerminalPageBackground();
 		for (const entry of _blinkContexts.values()) {
 			entry.key._blinkActive = false;
 		}

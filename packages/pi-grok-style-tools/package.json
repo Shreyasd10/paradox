@@ -1,7 +1,7 @@
 {
   "name": "@shreyasdevadiga/pi-grok-style-tools",
   "version": "0.1.0",
-  "description": "Grok Build–style TUI for Pi — GrokNight theme, braille spinner, ◆ tools, turn-status, footer chrome, prompt box",
+  "description": "Grok Build–style TUI for Pi — Oscura Midnight, grey user-message bands, ◆ tools, prompt box",
   "author": "shreyasdevadiga",
   "license": "MIT",
   "type": "module",

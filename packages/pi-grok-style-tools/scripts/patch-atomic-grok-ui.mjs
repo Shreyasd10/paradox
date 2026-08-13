@@ -12,7 +12,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const action = process.argv[2] ?? "apply";
@@ -30,8 +30,10 @@ const mainPath = join(atomicRoot, "dist", "main.js");
 const cliPath = join(atomicRoot, "dist", "cli.js");
 const atomicAgentDir = process.env.ATOMIC_CODING_AGENT_DIR || join(homedir(), ".atomic", "agent");
 const settingsPath = join(atomicAgentDir, "settings.json");
-const themeSource = fileURLToPath(new URL("../theme/grok-dark.json", import.meta.url));
-const themeTarget = join(atomicAgentDir, "themes", "grok-dark.json");
+const themeSources = [
+	fileURLToPath(new URL("../theme/grok-dark.json", import.meta.url)),
+	fileURLToPath(new URL("../theme/oscura-midnight.json", import.meta.url)),
+];
 
 /** @type {{ original: string; patched: string }[]} */
 const mainVariants = [
@@ -83,27 +85,35 @@ function replaceOnce(path, from, to, label) {
 	writeFileSync(path, content.replace(from, to));
 }
 
-function themeState() {
+function themeTargetFor(source) {
+	return join(atomicAgentDir, "themes", basename(source));
+}
+
+function themeStateFor(source) {
+	const themeTarget = themeTargetFor(source);
 	if (!existsSync(themeTarget)) return "missing";
 	try {
-		if (lstatSync(themeTarget).isSymbolicLink() && realpathSync(themeTarget) === realpathSync(themeSource)) {
+		if (lstatSync(themeTarget).isSymbolicLink() && realpathSync(themeTarget) === realpathSync(source)) {
 			return "linked";
 		}
-		if (readFileSync(themeTarget, "utf8") === readFileSync(themeSource, "utf8")) return "copied";
+		if (readFileSync(themeTarget, "utf8") === readFileSync(source, "utf8")) return "copied";
 	} catch {
 		return "conflict";
 	}
 	return "conflict";
 }
 
-function ensureTheme() {
-	const current = themeState();
-	if (current === "linked" || current === "copied") return;
-	if (current === "conflict") {
-		throw new Error(`Refusing to replace unmanaged Atomic theme: ${themeTarget}`);
+function ensureThemes() {
+	for (const source of themeSources) {
+		const themeTarget = themeTargetFor(source);
+		const current = themeStateFor(source);
+		if (current === "linked" || current === "copied") continue;
+		if (current === "conflict") {
+			throw new Error(`Refusing to replace unmanaged Atomic theme: ${themeTarget}`);
+		}
+		mkdirSync(dirname(themeTarget), { recursive: true });
+		symlinkSync(source, themeTarget);
 	}
-	mkdirSync(dirname(themeTarget), { recursive: true });
-	symlinkSync(themeSource, themeTarget);
 }
 
 /**
@@ -165,12 +175,16 @@ const main = mainState();
 const cli = cliState();
 
 if (action === "check") {
-	const currentThemeState = themeState();
 	const settings = settingsIsolationState();
 	const problems = [];
 	if (main.status !== "patched") problems.push(`main=${main.status}`);
 	if (cli !== "patched") problems.push(`cli=${cli}`);
-	if (!["linked", "copied"].includes(currentThemeState)) problems.push(`theme=${currentThemeState}`);
+	for (const source of themeSources) {
+		const currentThemeState = themeStateFor(source);
+		if (!["linked", "copied"].includes(currentThemeState)) {
+			problems.push(`theme:${basename(source)}=${currentThemeState}`);
+		}
+	}
 	if (settings.status !== "opted-out") {
 		problems.push(`settings=${settings.status}${settings.message ? `(${settings.message})` : ""}`);
 	}
@@ -194,10 +208,12 @@ if (action === "apply") {
 		replaceOnce(mainPath, main.variant.original, main.variant.patched, "dist/main.js");
 	}
 	replaceOnce(cliPath, cliOriginal, cliPatched, "dist/cli.js");
-	ensureTheme();
+	ensureThemes();
 	ensureSettingsOptOut();
 	console.log(`Atomic ${packageJson.version} Grok UI patch applied`);
-	console.log(`Atomic theme linked: ${themeTarget}`);
+	for (const source of themeSources) {
+		console.log(`Atomic theme linked: ${themeTargetFor(source)}`);
+	}
 	console.log(`Durable settings opt-out written: ${settingsPath}`);
 	console.log("Set ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION=0 to temporarily restore isolation.");
 	console.log("Re-run `npm run atomic:patch` after `atomic update` (dist patches are replaced).");
@@ -205,7 +221,11 @@ if (action === "apply") {
 }
 
 // rollback
-if (themeState() === "linked") unlinkSync(themeTarget);
+if (themeSources.some((source) => themeStateFor(source) === "linked")) {
+	for (const source of themeSources) {
+		if (themeStateFor(source) === "linked") unlinkSync(themeTargetFor(source));
+	}
+}
 if (cli === "patched") replaceOnce(cliPath, cliPatched, cliOriginal, "dist/cli.js");
 if (main.status === "patched" && main.variant) {
 	replaceOnce(mainPath, main.variant.patched, main.variant.original, "dist/main.js");
