@@ -93,7 +93,8 @@ omp validates custom themes strictly and requires color tokens beyond pi's. The 
 
 OMP-specific behavior:
 
-- The omp status line renders **below** the prompt box (not inside it), and the editor's `+-`/`-+` corner markers are stripped.
+- The omp status line renders **below** the prompt box (not inside the editor top border). Current omp embeds status via `setTopBorderProvider`; this extension captures that provider, hides native editor chrome, and paints the chips under the Grok `╭─╮` box.
+- The editor's `+-`/`-+` (and unicode corner) markers are stripped inside the box.
 - `ctx.ui.setFooter` is a no-op in omp, so the Grok Build footer chrome does not render; the prompt box, tool rows, spinner, commands, and user-message chrome all work.
 - Do **not** load alongside `pi-claude-style-tools` (both patch `Loader.prototype`).
 

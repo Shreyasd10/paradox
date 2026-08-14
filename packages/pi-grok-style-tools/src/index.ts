@@ -5221,22 +5221,37 @@ const GROK_PROMPT_BORDER_ACTIVE = "\x1b[38;2;80;80;88m"; // #505058
 const GROK_PROMPT_FG = "\x1b[38;2;200;200;200m"; // #c8c8c8
 const GROK_PROMPT_PLACEHOLDER = "\x1b[38;2;108;108;108m"; // #6c6c6c
 
-// The base editor renders omp's status line as its first row (where the top
-// border would be): branch glyph + model/dir/ctx chips. Pull that row out of
-// the prompt box and render it underneath instead.
+type GrokEditorTopBorder = { content: string; width: number };
+
+// Legacy hosts put status as the first content row (`+-- …` / `[M] … >`).
+// Current omp embeds it in the editor top border via setTopBorderProvider
+// (`╭── π  > ⬢ Model · … ──╮`). Detect both so we can move it below our box.
 function isStatusRow(raw: string): boolean {
 	const plain = stripAnsi(raw).trimEnd();
-	if (/^─+$/.test(plain)) return false;
+	if (!plain || /^─+$/.test(plain)) return false;
 	if (/^\+--\s/.test(plain)) return true;
-	return /\[[MTD]\]/.test(plain) && plain.includes(" > ");
+	if (/\[[MTD]\]/.test(plain) && plain.includes(" > ")) return true;
+	// omp top-border-with-status (not a plain empty ╭──╮ chrome row)
+	if (/^╭─/.test(plain) && !/^╭─+╮$/.test(plain) && plain.includes(" > ")) {
+		return /π/.test(plain) || /[⬢◉◫]/.test(plain) || /\[[MTD]\]/.test(plain);
+	}
+	return false;
 }
 
-// omp's editor draws `+-`/`-+` as the input-area corner markers, wrapped in
-// color codes; drop them (and surrounding ANSI/space) inside the box.
+function isNativeEditorChromeRow(plain: string): boolean {
+	const t = plain.trimEnd();
+	if (!t) return false;
+	if (/^[╭╰]─+[╮╯]?$/.test(t)) return true;
+	if (/^╰─+╯$/.test(t) || /^╭─+╮$/.test(t)) return true;
+	return false;
+}
+
+// omp's editor draws `+-`/`-+` (or unicode ╭/╮) as input-area corner markers;
+// drop them (and surrounding ANSI/space) inside the box.
 function trimInputRow(raw: string): string {
 	const head = /^(?:\x1b\[[0-9;]*m|\s)*/;
-	const tailMarker = /\s*-\+(?:\x1b\[[0-9;]*m)?$/;
-	return raw.replace(head, "").replace(/^\+-/, "").replace(head, "").replace(tailMarker, "");
+	const tailMarker = /\s*(?:-\+|╮)(?:\x1b\[[0-9;]*m)?$/;
+	return raw.replace(head, "").replace(/^(?:\+-|╭─*)/, "").replace(head, "").replace(tailMarker, "");
 }
 
 function grokPromptChrome(theme: any = getGlobalPiTheme()): {
@@ -5259,6 +5274,56 @@ function grokPromptChrome(theme: any = getGlobalPiTheme()): {
 }
 
 class GrokPromptEditor extends CustomEditor {
+	/** Captured from omp's setTopBorderProvider — render below our box, not in the top border. */
+	_grokStatusProvider?: (availableWidth: number) => GrokEditorTopBorder | undefined;
+	_grokStatusEager?: GrokEditorTopBorder;
+
+	constructor(tui: TUI, theme: EditorTheme, keybindings: any) {
+		// Host CustomEditor arity differs (pi vs omp); forward the factory args.
+		super(tui as any, theme as any, keybindings as any);
+		this.#installStatusCapture();
+	}
+
+	#installStatusCapture(): void {
+		const self = this as any;
+
+		// Hide native editor chrome; we draw the Grok ╭─╮ ourselves.
+		if (typeof self.setBorderVisible === "function") {
+			const origBorder = self.setBorderVisible.bind(self);
+			self.setBorderVisible = (_visible: boolean) => {
+				origBorder(false);
+			};
+			origBorder(false);
+		}
+
+		// omp wires status via setTopBorderProvider(availableWidth => statusLine.getTopBorder(...)).
+		// Capture it and clear the native slot so status is not baked into the top border.
+		if (typeof self.setTopBorderProvider === "function") {
+			const origProvider = self.setTopBorderProvider.bind(self);
+			self.setTopBorderProvider = (provider: ((availableWidth: number) => GrokEditorTopBorder | undefined) | undefined) => {
+				this._grokStatusProvider = typeof provider === "function" ? provider : undefined;
+				this._grokStatusEager = undefined;
+				origProvider(undefined);
+			};
+		}
+
+		if (typeof self.setTopBorder === "function") {
+			const origTop = self.setTopBorder.bind(self);
+			self.setTopBorder = (content: GrokEditorTopBorder | undefined) => {
+				this._grokStatusEager = content;
+				this._grokStatusProvider = undefined;
+				origTop(undefined);
+			};
+		}
+	}
+
+	#resolveStatusBelow(width: number): string | undefined {
+		const fromProvider = this._grokStatusProvider?.(width);
+		const status = fromProvider ?? this._grokStatusEager;
+		if (status?.content) return status.content;
+		return undefined;
+	}
+
 	render(width: number): string[] {
 		(this as any).paddingX = 0;
 		const gutter = grokOuterHPad(width);
@@ -5280,38 +5345,44 @@ class GrokPromptEditor extends CustomEditor {
 			const padded = `${reapplyBgAfterReset(body, fill)}${" ".repeat(Math.max(0, contentWidth - visibleWidth(body)))}`;
 			return `${fill}${borderAnsi}│${TRANSPARENT_RESET}${fill} ${padded} ${fill}${borderAnsi}│${TRANSPARENT_RESET}`;
 		};
+		// Keep native borders off every frame (host may re-enable after theme/settings sync).
+		const self = this as any;
+		if (typeof self.setBorderVisible === "function") self.setBorderVisible(false);
 		const lines = super.render(contentWidth);
 		if (!Array.isArray(lines) || lines.length === 0) {
-			return finish([
+			const empty = [
 				truncateToWidth(top, w, ""),
 				truncateToWidth(frameRow(`${fg}${arrow}${RESET}${fill}`), w, ""),
 				truncateToWidth(bottom, w, ""),
-			]);
+			];
+			const status = this.#resolveStatusBelow(w);
+			if (status) empty.push(truncateToWidth(status, w, ""));
+			return finish(empty);
 		}
 
 		const content: string[] = [];
+		const legacyStatusRows: string[] = [];
 		for (const line of lines) {
-			const plain = stripAnsi(line ?? "");
-			if (/^─+$/.test(plain)) continue;
+			const raw = line ?? "";
+			const plain = stripAnsi(raw);
+			if (/^─+$/.test(plain) || isNativeEditorChromeRow(plain)) continue;
 			if (/^─+\s*[↑↓]/.test(plain) || /[↑↓].*─+$/.test(plain)) {
 				content.push(plain.trim());
 				continue;
 			}
-			content.push(line ?? "");
+			// Fallback: status still arrived as a painted top-border / first row.
+			if (isStatusRow(raw)) {
+				legacyStatusRows.push(raw);
+				continue;
+			}
+			// Editor pads to contentWidth; keep as-is (including cursor/ANSI).
+			content.push(raw);
 		}
 		if (content.length === 0) content.push("");
 
-		const statusRows: string[] = [];
-		let inputRows = content;
-		if (isStatusRow(content[0] ?? "")) {
-			statusRows.push(content[0]);
-			inputRows = content.slice(1);
-			if (inputRows.length === 0) inputRows.push("");
-		}
-
 		const out: string[] = [truncateToWidth(top, w, "")];
 		let firstContent = true;
-		for (const raw of inputRows) {
+		for (const raw of content) {
 			const plain = stripAnsi(raw);
 			const isScroll = (plain.includes("↑") || plain.includes("↓")) && !/\x1b\[/.test(raw);
 			let body: string;
@@ -5328,9 +5399,18 @@ class GrokPromptEditor extends CustomEditor {
 			out.push(truncateToWidth(frameRow(body), w, ""));
 		}
 		out.push(truncateToWidth(bottom, w, ""));
-		for (const statusRaw of statusRows) {
-			out.push(truncateToWidth(statusRaw, w, ""));
+
+		// Prefer the captured omp status provider (chips only). Fall back to any
+		// legacy/painted status rows we stripped out of the editor chrome.
+		const status = this.#resolveStatusBelow(w);
+		if (status) {
+			out.push(truncateToWidth(status, w, ""));
+		} else {
+			for (const statusRaw of legacyStatusRows) {
+				out.push(truncateToWidth(statusRaw, w, ""));
+			}
 		}
+
 		return finish(out);
 	}
 }
