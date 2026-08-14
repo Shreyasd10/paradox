@@ -15,6 +15,7 @@
  * cross-ref: spec §5.10 Integration with pi-intercom, §8.1 Phase G
  */
 
+import { isStaleExtensionContextError } from "@bastani/atomic";
 import type { WorkflowDetails } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
@@ -103,6 +104,10 @@ export interface WorkflowControlIntercomPayload {
 	readonly mode: WorkflowDetails["mode"];
 	readonly status: WorkflowDetails["status"];
 	readonly message: string;
+	/** Terminal ctx.exit() discriminator and payload for parent sessions. */
+	readonly exited?: boolean;
+	readonly exitReason?: string;
+	readonly outputs?: WorkflowDetails["output"];
 	readonly parentSession?: string;
 	readonly createdAt: number;
 }
@@ -150,10 +155,19 @@ export function emitWorkflowControlIntercom(
 		mode: details.mode,
 		status: details.status,
 		message,
+		...(details.exited !== undefined ? { exited: details.exited } : {}),
+		...(details.exitReason !== undefined ? { exitReason: details.exitReason } : {}),
+		...(details.output !== undefined ? { outputs: details.output } : {}),
 		...(parentSession !== undefined ? { parentSession } : {}),
 		createdAt: Date.now(),
 	};
-	port!.emit!("workflow:control-intercom", payload as unknown as Record<string, unknown>);
+	try {
+		port!.emit!("workflow:control-intercom", payload as unknown as Record<string, unknown>);
+	} catch (error) {
+		if (!isStaleExtensionContextError(error)) throw error;
+		// A workflow can outlive the extension runtime that supplied the port.
+		return false;
+	}
 	return true;
 }
 
@@ -174,7 +188,13 @@ export function emitWorkflowResultIntercom(
 		...(parentSession !== undefined ? { parentSession } : {}),
 		createdAt: Date.now(),
 	};
-	port!.emit!("workflow:result-intercom", payload as unknown as Record<string, unknown>);
+	try {
+		port!.emit!("workflow:result-intercom", payload as unknown as Record<string, unknown>);
+	} catch (error) {
+		if (!isStaleExtensionContextError(error)) throw error;
+		// A workflow can outlive the extension runtime that supplied the port.
+		return false;
+	}
 	return true;
 }
 
@@ -231,10 +251,21 @@ export function subscribeIntercomControl(
 		});
 	};
 
-	const unsubscribe = pi.events!.on!("subagent:control-intercom", handler);
+	let unsubscribe: unknown;
+	try {
+		unsubscribe = pi.events!.on!("subagent:control-intercom", handler);
+	} catch (error) {
+		if (!isStaleExtensionContextError(error)) throw error;
+		return null;
+	}
 
 	return () => {
 		active = false;
-		if (typeof unsubscribe === "function") unsubscribe();
+		try {
+			if (typeof unsubscribe === "function") unsubscribe();
+		} catch (error) {
+			if (!isStaleExtensionContextError(error)) throw error;
+			// Stale event-bus cleanup is best effort.
+		}
 	};
 }

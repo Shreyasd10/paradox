@@ -23,6 +23,7 @@
  *  - https://pi.dev/docs/latest/tui (canonical Pi-tui component contract)
  */
 
+import { keyText, TranscriptFollowIndicator } from "@bastani/atomic";
 import type { Component, Focusable } from "@earendil-works/pi-tui";
 import { fitStageChatFrame, planStageChatFrame } from "./stage-chat-layout.js";
 import {
@@ -79,7 +80,6 @@ export class StageChatView implements Component, Focusable {
 	private requestRender!: StageChatViewContext["requestRender"];
 	private requestFocus!: StageChatViewContext["requestFocus"];
 	private focusHoldTimer!: StageChatViewContext["focusHoldTimer"];
-	private getViewportRows!: StageChatViewContext["getViewportRows"];
 	private piTui!: StageChatViewContext["piTui"];
 	private piTheme!: StageChatViewContext["piTheme"];
 	private piKeybindings!: StageChatViewContext["piKeybindings"];
@@ -100,8 +100,6 @@ export class StageChatView implements Component, Focusable {
 	private promptMaxScroll!: StageChatViewContext["promptMaxScroll"];
 	private promptVisibleRows!: StageChatViewContext["promptVisibleRows"];
 	private localPaused!: StageChatViewContext["localPaused"];
-	private mouseScrollCaptureEnabled!: StageChatViewContext["mouseScrollCaptureEnabled"];
-	private copyNotice!: StageChatViewContext["copyNotice"];
 	private seenNoticeIds!: StageChatViewContext["seenNoticeIds"];
 	private _unsubscribeStore!: StageChatViewContext["_unsubscribeStore"];
 	private _unsubscribeHandle!: StageChatViewContext["_unsubscribeHandle"];
@@ -160,6 +158,12 @@ export class StageChatView implements Component, Focusable {
 		if (blocked) this.chatHost.scrollToBottom();
 
 		let bodyLines: string[];
+		let transcriptBodyActive = false;
+		let reservedIndicatorLines: readonly string[] = [];
+		const indicator = new TranscriptFollowIndicator({
+			isFollowing: () => this.chatHost.bodyScrollFromBottom() === 0,
+			keyLabel: () => keyText("tui.altScreen.bottom"),
+		});
 		if (bodyBudget <= 0) {
 			bodyLines = [];
 		} else if (promptActive) {
@@ -167,17 +171,27 @@ export class StageChatView implements Component, Focusable {
 		} else if (blocked) {
 			bodyLines = renderBlockedBody(ctx, w, bodyBudget, stage);
 		} else if (!readOnlyArchive && isPaused(ctx, stage)) {
-			bodyLines = renderPausedBody(ctx, w, bodyBudget);
+			reservedIndicatorLines = bodyBudget > 1 ? indicator.render(w) : [];
+			bodyLines = renderPausedBody(ctx, w, bodyBudget, reservedIndicatorLines, () => indicator.render(w));
 		} else if (readOnlyArchive) {
-			bodyLines = renderReadOnlyArchiveBody(ctx, w, bodyBudget, stage);
+			reservedIndicatorLines = bodyBudget > 1 ? indicator.render(w) : [];
+			bodyLines = renderReadOnlyArchiveBody(ctx, w, bodyBudget, stage, reservedIndicatorLines, () =>
+				indicator.render(w),
+			);
 		} else {
+			transcriptBodyActive = true;
 			bodyLines = this.chatHost.renderBody(w, bodyBudget);
 		}
+		const indicatorLines = transcriptBodyActive && bodyBudget > 1 ? indicator.render(w) : [];
+		const indicatorVisible = indicatorLines.length > 0;
+		const dropBodyRow = transcriptBodyActive && indicatorVisible && bodyLines.length >= bodyBudget;
+		const visibleBodyLines = bodyLines.slice(dropBodyRow ? 1 : 0, bodyBudget);
 
 		const lines = [
 			...headerLines,
 			...sepLines,
-			...bodyLines,
+			...visibleBodyLines,
+			...indicatorLines,
 			...visiblePendingLines,
 			...visibleWorkingLines,
 			...visibleUsageLines,
@@ -185,10 +199,6 @@ export class StageChatView implements Component, Focusable {
 			...visibleFooterLines,
 		];
 		return fitStageChatFrame(lines, totalRows, blankLine(w));
-	}
-
-	wantsMouseScrollTracking(): boolean {
-		return this.mouseScrollCaptureEnabled;
 	}
 
 	handleInput(data: string): boolean {
@@ -219,7 +229,6 @@ export class StageChatView implements Component, Focusable {
 		void this.requestRender;
 		void this.requestFocus;
 		void this.focusHoldTimer;
-		void this.getViewportRows;
 		void this.piTui;
 		void this.piTheme;
 		void this.piKeybindings;
@@ -236,8 +245,6 @@ export class StageChatView implements Component, Focusable {
 		void this.promptScrollOffset;
 		void this.promptMaxScroll;
 		void this.promptVisibleRows;
-		void this.mouseScrollCaptureEnabled;
-		void this.copyNotice;
 		void this.seenNoticeIds;
 		void this._unsubscribeStore;
 		void this._unsubscribeHandle;

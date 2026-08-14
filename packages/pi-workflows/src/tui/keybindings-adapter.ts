@@ -40,9 +40,11 @@ export interface KeybindingsLike {
 
 export const APP_ACTION = {
 	toolsExpand: "app.tools.expand",
+	thinkingToggle: "app.thinking.toggle",
 } as const;
 
 export const TUI_ACTION = {
+	altScreenBottom: "tui.altScreen.bottom",
 	editorCursorUp: "tui.editor.cursorUp",
 	editorCursorDown: "tui.editor.cursorDown",
 	editorCursorLeft: "tui.editor.cursorLeft",

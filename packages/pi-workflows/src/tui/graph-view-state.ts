@@ -79,7 +79,7 @@ export abstract class GraphViewState {
 	protected onDetach?: () => void;
 	protected initialFocusedStageId?: string;
 	protected initialFocusedRunId?: string;
-	protected getViewportRows?: () => number | undefined;
+	protected piTui?: GraphViewOpts["piTui"];
 	protected requestRender?: () => void;
 	protected piKeybindings?: unknown;
 	protected footerData?: ReadonlyFooterDataProvider;
@@ -103,12 +103,12 @@ export abstract class GraphViewState {
 		targets: new Map(),
 	};
 	protected currentSnapshot: StoreSnapshot | null = null;
-	protected graphScrollOffset = 0;
+	protected abstract _graphScrollTop(): number;
 	protected graphScrollColOffset = 0;
 	protected graphNodeHitRects: GraphNodeHitRect[] = [];
 	protected lastGraphViewport: GraphViewportGeometry | null = null;
-	protected lastGraphTotalRows = 0;
-	protected lastOverlayFrameWidth = 80;
+	protected lastGraphTopPad = 0;
+	protected lastGraphVisibleRows = 0;
 	protected pendingEnsureFocusedVisible = true;
 	protected lastAutoFocusedAwaitingInputKey: string | null = null;
 	protected lastBuiltSnapshotVersion: number | null = null;
@@ -132,7 +132,7 @@ export abstract class GraphViewState {
 		this.onDetach = opts.onDetach;
 		this.initialFocusedStageId = opts.initialFocusedStageId;
 		this.initialFocusedRunId = opts.initialFocusedRunId;
-		this.getViewportRows = opts.getViewportRows;
+		this.piTui = opts.piTui;
 		this.requestRender = opts.requestRender;
 		this.piKeybindings = opts.piKeybindings;
 		this.footerData = opts.footerData;
@@ -187,7 +187,6 @@ export abstract class GraphViewState {
 			this.cachedRenderGeometry = { canvasWidth: 0, totalRows: 0, bands: [], edges: [] };
 			this.expandedGraph = { stages: [], renderStages: [], tools: [], nodes: [], targets: new Map() };
 			this.focusedIndex = 0;
-			this.graphScrollOffset = 0;
 			this.graphScrollColOffset = 0;
 			this.graphNodeHitRects = [];
 			this.lastGraphViewport = null;
@@ -340,7 +339,6 @@ export abstract class GraphViewState {
 
 		if (this.cachedLayout.length === 0) {
 			this.focusedIndex = 0;
-			this.graphScrollOffset = 0;
 			this.graphScrollColOffset = 0;
 		} else if (this.focusedIndex >= this.cachedLayout.length) {
 			this.focusedIndex = this.cachedLayout.length - 1;

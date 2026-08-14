@@ -12,7 +12,7 @@ import {
 	trailingWidgetBorderChar,
 	widgetHintTargetLineIndex,
 } from "./stage-chat-view-render-helpers.js";
-import { STAGE_CHAT_COPY_LAST_LABEL, STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL, type StageChatViewContext } from "./stage-chat-view-types.js";
+import type { StageChatViewContext } from "./stage-chat-view-types.js";
 import { truncateToWidth, visibleWidth } from "./text-helpers.js";
 
 export function renderHeader(ctx: StageChatViewContext, width: number, stage: StageSnapshot | undefined): string[] {
@@ -136,55 +136,14 @@ function mergeOrchestratorReturnHintIntoLine(
 		minimumPrefixWidth?: number;
 	} = {},
 ): string {
-	const copyModeOn = !ctx.mouseScrollCaptureEnabled;
-	const copyLastStyled =
-		paint(STAGE_CHAT_COPY_LAST_LABEL, ctx.theme.text, { bold: true }) +
-		paint(" copy last", ctx.theme.textMuted);
-	const noticeHint = ctx.copyNotice
-		? {
-				plain: ctx.copyNotice,
-				styled: paint(ctx.copyNotice, ctx.theme.success),
-			}
-		: null;
-	const fullHint = noticeHint
-		? noticeHint
-		: copyModeOn
-		? {
-				plain: `esc resume scroll · ${STAGE_CHAT_COPY_LAST_LABEL} copy last`,
-				styled:
-					paint("esc", ctx.theme.text, { bold: true }) +
-					paint(" resume scroll · ", ctx.theme.textMuted) +
-					copyLastStyled,
-			}
-		: {
-				plain: `ctrl+x return to graph · ${STAGE_CHAT_COPY_LAST_LABEL} copy last · ${STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL} copy mode`,
-				styled:
-					paint("ctrl+x", ctx.theme.text, { bold: true }) +
-					paint(" return to graph · ", ctx.theme.textMuted) +
-					copyLastStyled +
-					paint(" · ", ctx.theme.textMuted) +
-					paint(STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL, ctx.theme.text, { bold: true }) +
-					paint(" copy mode", ctx.theme.textMuted),
-			};
-	const compactHint = noticeHint
-		? noticeHint
-		: copyModeOn
-		? {
-				plain: `esc scroll · ${STAGE_CHAT_COPY_LAST_LABEL} copy`,
-				styled:
-					paint("esc", ctx.theme.text, { bold: true }) +
-					paint(" scroll · ", ctx.theme.textMuted) +
-					paint(STAGE_CHAT_COPY_LAST_LABEL, ctx.theme.text, { bold: true }) +
-					paint(" copy", ctx.theme.textMuted),
-			}
-		: {
-				plain: `ctrl+x graph · ${STAGE_CHAT_COPY_LAST_LABEL} copy`,
-				styled:
-					paint("ctrl+x", ctx.theme.text, { bold: true }) +
-					paint(" graph · ", ctx.theme.textMuted) +
-					paint(STAGE_CHAT_COPY_LAST_LABEL, ctx.theme.text, { bold: true }) +
-					paint(" copy", ctx.theme.textMuted),
-			};
+	const fullHint = {
+		plain: "ctrl+x return to graph",
+		styled: paint("ctrl+x", ctx.theme.text, { bold: true }) + paint(" return to graph", ctx.theme.textMuted),
+	};
+	const compactHint = {
+		plain: "ctrl+x graph",
+		styled: paint("ctrl+x", ctx.theme.text, { bold: true }) + paint(" graph", ctx.theme.textMuted),
+	};
 	const trailingBorder = options.preserveTrailingBorder === true ? trailingWidgetBorderChar(line) : "";
 	const suffixWidth = visibleWidth(trailingBorder);
 	const requestedRightMargin = Math.max(0, Math.floor(options.rightMargin ?? 0));

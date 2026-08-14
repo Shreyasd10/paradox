@@ -9,7 +9,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Builtin `ralph`, `goal`, and `open-claude-design` looped stages now default to `iteration_context: "fresh"`: each iteration starts a new session and re-grounds from bounded, versioned handoff manifests plus the full stage prompt instead of forking prior transcripts. `"fork"` remains available as a transitional per-run rollback for two minor releases and is persisted at launch so resume/replay cannot flip modes mid-run. Fresh mode keeps continuity through research/review/notes/ledger/preview artifacts (including failed-approach notes) while holding stage-start context in the useful working-set band.
-
 - Added `opencode-go/deepseek-v4-flash:high` as an early fallback on every pinned builtin workflow model chain (Goal orchestrator/reviewer, Ralph prompt-engineer/research/orchestrator/reviewers, and Open Claude Design) so Anthropic Token Plan / rate-limit exhaustion can advance to OpenCode Go DeepSeek Flash before the rest of the curated chain.
 
 ### Fixed

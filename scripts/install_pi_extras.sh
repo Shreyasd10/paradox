@@ -116,6 +116,9 @@ install_pi_extensions() {
     for name in "${VENDORED_PACKAGES[@]}"; do
       install_vendored_package "$name"
     done
+    if [[ -f "$ROOT_DIR/scripts/install-pi-host-patch-guard.sh" ]]; then
+      bash "$ROOT_DIR/scripts/install-pi-host-patch-guard.sh" --uninstall >/dev/null 2>&1 || true
+    fi
     return 0
   fi
   command -v pi >/dev/null 2>&1 || {
@@ -132,6 +135,13 @@ install_pi_extensions() {
   for name in "${VENDORED_PACKAGES[@]}"; do
     install_vendored_package "$name"
   done
+  # Patched pi host: main-chat "Jump to bottom" follow indicator + launchd
+  # guard that re-applies it automatically after every `pi update`.
+  if [[ -f "$ROOT_DIR/scripts/install-pi-host-patch-guard.sh" ]]; then
+    bash "$ROOT_DIR/scripts/install-pi-host-patch-guard.sh" \
+      && echo "  installed pi host jump-to-bottom patch guard" \
+      || echo "  WARN: pi host patch guard install failed" >&2
+  fi
 }
 
 deploy_pi_config() {

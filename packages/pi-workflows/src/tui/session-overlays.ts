@@ -25,12 +25,13 @@
 
 import type { PiCustomComponent, PiCustomOverlayFactoryTui, PiCustomOverlayFunction } from "../extension/wiring.js";
 import type { Store } from "../shared/store.js";
-import { readGraphStoreSnapshot, subscribeStoreInvalidation } from "../shared/store-observation.js";
+import { subscribeStoreInvalidation } from "../shared/store-observation.js";
 import type { GraphTheme } from "./graph-theme.js";
 import {
 	createSessionPickerResumeCandidateCache,
 	createSessionPickerState,
 	handleSessionPickerInput,
+	isSessionPickerKey,
 	renderSessionPicker,
 	selectRunsForPicker,
 } from "./session-picker.js";
@@ -81,6 +82,7 @@ export function openSessionPicker(
 		const state = createSessionPickerState();
 		let settled = false;
 		let unsubscribe: (() => void) | null = null;
+		let pickerRevision = 0;
 
 		const resumeCandidateCache = createSessionPickerResumeCandidateCache();
 
@@ -100,16 +102,16 @@ export function openSessionPicker(
 			};
 			// Re-render on store changes so newly-started runs appear and
 			// status icons refresh without the user having to press a key.
-			// Read one memoized payload-free projection per render rather than
-			// caching a snapshot from the subscription callback: the
-			// invalidation channel carries no snapshot, so a cached one would
-			// go stale and newly-started runs would never appear.
+			// The picker only needs live run references for rendering; a small local
+			// revision keeps resume-probe caching coherent without cloning the store.
 			const selectRows = (): ReturnType<typeof selectRunsForPicker> => {
-				const snapshot = readGraphStoreSnapshot(store);
+				const liveRuns = store.runs();
 				const resumeCandidateLookup =
-					intent === "resume" ? resumeCandidateCache({ ...snapshot, runs: store.runs() }) : undefined;
+					intent === "resume"
+						? resumeCandidateCache({ runs: liveRuns, notices: store.notices(), version: pickerRevision })
+						: undefined;
 				return selectRunsForPicker(
-					snapshot.runs,
+					liveRuns,
 					state.query,
 					state.includeAll,
 					Date.now(),
@@ -117,22 +119,27 @@ export function openSessionPicker(
 					resumeCandidateLookup,
 				);
 			};
-			unsubscribe = subscribeStoreInvalidation(store, () => tui.requestRender?.());
+			unsubscribe = subscribeStoreInvalidation(store, () => {
+				pickerRevision++;
+				tui.requestRender?.();
+			});
 			return {
 				render: (width: number) => {
 					const rows = selectRows();
-					return renderSessionPicker({ width, theme, rows, state });
+					return renderSessionPicker({ width, theme, rows, state, allRuns: store.runs() });
 				},
-				handleInput: (data: string) => {
+				handleInput: (data: string): boolean => {
 					const rows = selectRows();
+					const consumed = isSessionPickerKey(data, state, rows);
 					const action = handleSessionPickerInput(data, state, rows);
 					if (action.kind === "noop") {
 						tui.requestRender?.();
-						return;
+						return consumed;
 					}
 					if (action.kind === "close") finish({ kind: "close" });
 					else if (action.kind === "connect") finish(toResult(action));
 					else finish(toResult(action));
+					return true;
 				},
 				invalidate: () => tui.requestRender?.(),
 				dispose: () => {

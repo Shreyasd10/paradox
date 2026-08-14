@@ -51,7 +51,8 @@ export interface PiOverlayOptions {
 
 export interface PiCustomComponent {
 	render(width: number): string[];
-	handleInput?: (data: string) => void;
+	/** Return true when input was consumed; false lets fullscreen viewport input fall through. */
+	handleInput?: (data: string) => boolean;
 	invalidate?: () => void;
 	dispose?: () => void;
 }
@@ -119,6 +120,8 @@ export interface PiCustomOverlayOptions {
 	 * surface whose hint row offers `ctrl+c Skip`, `ctrl+c Close`, or cancel.
 	 */
 	handlesCtrlC?: boolean;
+	/** Declare that this component claims internal UI actions such as jump-to-bottom. */
+	handlesInternalUiAction?: boolean;
 	/**
 	 * Geometry / anchoring intended for pi-tui's `resolveOverlayLayout`.
 	 * NOT forwarded by current pi interactive `custom()` — see
@@ -137,32 +140,18 @@ export interface PiCustomOverlayOptions {
 }
 
 /**
- * Optional remote-control capability exposed on `PiCustomOverlayFactoryTui.terminal`.
- *
- * In isolated interactive mode the workflow extension runs inside the engine
- * child, whose stdout is the JSONL transport rather than a TTY — writing raw
- * mouse/autowrap escape sequences to `process.stdout` there is a no-op. The
- * host instead exposes these typed setters on the factory TUI's terminal so the
- * overlay can drive host-TTY modes over the allowlisted engine protocol. Absent
- * on non-isolated hosts and test seams, where the overlay falls back to writing
- * escape sequences to its local `process.stdout`.
- */
-export interface PiRemoteTerminalControl {
-	setMouseScrollTracking(enabled: boolean): void;
-	setAutowrap(enabled: boolean): void;
-}
-
-/**
  * Surface of the Pi `TUI` instance exposed to overlay factories. The
- * `terminal` accessor is optional because some host implementations and
- * test mocks do not surface it; consumers must handle `undefined`.
+ * `terminal` accessor is optional because some host implementations and test
+ * mocks do not surface it; consumers must handle `undefined`. `mode` identifies
+ * whether the host renderer already owns fullscreen terminal modes, so local
+ * fallback controls do not disable that baseline.
  */
 export interface PiCustomOverlayFactoryTui {
+	readonly mode?: "regular" | "fullscreen";
 	requestRender?: () => void;
 	terminal?: {
 		rows?: number;
 		columns?: number;
-		setMouseScrollTracking?: (enabled: boolean) => void;
 		setAutowrap?: (enabled: boolean) => void;
 	};
 	setFocus?: (target: unknown) => void;
@@ -222,6 +211,8 @@ export interface PiHostSessionPickerRow {
 	modifiedAt: number;
 	messageCount: number;
 	firstMessage: string;
+	/** Generated resume summary. Absent when never generated, or stale against the latest message. */
+	summary?: string;
 	allMessagesText?: string;
 	name?: string;
 	/** Optional semantic color for synthetic selector rows. */

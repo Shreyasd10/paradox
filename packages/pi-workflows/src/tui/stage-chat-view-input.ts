@@ -1,4 +1,6 @@
-import { APP_ACTION, isKeybindingsLike, matchesAction } from "./keybindings-adapter.js";
+import { TRANSCRIPT_JUMP_TO_END_URL } from "@bastani/atomic";
+
+import { APP_ACTION, isKeybindingsLike, matchesAction, TUI_ACTION } from "./keybindings-adapter.js";
 import { parseTerminalMouseInput, terminalMouseWheelDirection } from "./mouse-input.js";
 import { defaultResponseFor, handlePromptCardInput, isPromptEscapeInput } from "./prompt-card.js";
 import { releaseMountedCustomUi } from "./stage-chat-view-custom-ui.js";
@@ -14,12 +16,17 @@ import {
 	resolvePromptResponse,
 	syncPromptState,
 } from "./stage-chat-view-state.js";
-import { copyTextToClipboard } from "./stage-chat-clipboard.js";
-import { lastAssistantText } from "./stage-chat-last-assistant.js";
 import { PROMPT_SCROLL_STEP_ROWS, type StageChatViewContext } from "./stage-chat-view-types.js";
 import { Key, matchesKey } from "./text-helpers.js";
 
 export function handleStageChatInput(ctx: StageChatViewContext, data: string): boolean {
+	if (data === TRANSCRIPT_JUMP_TO_END_URL) return handleStageChatJumpToBottom(ctx, data);
+	const keybindings = isKeybindingsLike(ctx.piKeybindings) ? ctx.piKeybindings : undefined;
+	// Only the default physical Ctrl+T belongs to the host thinking action. A
+	// user remap may reuse an editor key, so let that key reach the composer.
+	if (matchesKey(data, Key.ctrl("t")) && matchesAction(keybindings, data, APP_ACTION.thinkingToggle)) {
+		return false;
+	}
 	if (matchesKey(data, Key.ctrl("x"))) {
 		if (ctx.mountedCustomUi) releaseMountedCustomUi(ctx);
 		else {
@@ -29,26 +36,6 @@ export function handleStageChatInput(ctx: StageChatViewContext, data: string): b
 		}
 		ctx.onDetach();
 		return true;
-	}
-	if (matchesKey(data, Key.ctrlShift("c")) || matchesKey(data, Key.shiftCtrl("c"))) {
-		copyLastAssistantFromStageChat(ctx);
-		return true;
-	}
-	if (matchesKey(data, Key.ctrl("t"))) {
-		ctx.mouseScrollCaptureEnabled = !ctx.mouseScrollCaptureEnabled;
-		ctx.copyNotice = null;
-		ctx.requestRender?.();
-		return true;
-	}
-	if (!ctx.mouseScrollCaptureEnabled && matchesKey(data, Key.escape)) {
-		ctx.mouseScrollCaptureEnabled = true;
-		ctx.copyNotice = null;
-		ctx.requestRender?.();
-		return true;
-	}
-	if (ctx.copyNotice) {
-		ctx.copyNotice = null;
-		ctx.requestRender?.();
 	}
 	if (ctx.mountedCustomUi) {
 		return handleMountedCustomUiInput(ctx, data);
@@ -67,6 +54,7 @@ export function handleStageChatInput(ctx: StageChatViewContext, data: string): b
 	if (readOnlyPromptArchive && handlePromptScrollInput(ctx, data, true)) {
 		return true;
 	}
+	if (handleStageChatJumpToBottom(ctx, data)) return true;
 	if (ctx.chatHost.handleScrollInput(data)) return true;
 	if (matchesKey(data, Key.escape)) {
 		if (ctx.chatHost.isCompacting() || ctx.chatHost.isBashRunning() || ctx.chatHost.isEditingBashCommand()) {
@@ -96,17 +84,13 @@ export function handleStageChatInput(ctx: StageChatViewContext, data: string): b
 	return ctx.chatHost.handleInput(data);
 }
 
-function copyLastAssistantFromStageChat(ctx: StageChatViewContext): void {
-	const text = lastAssistantText(ctx.chatHost.entries());
-	if (!text) {
-		ctx.copyNotice = "nothing to copy";
-		ctx.requestRender?.();
-		return;
-	}
-	ctx.copyNotice = copyTextToClipboard(text) ? "copied" : "copy failed";
-	ctx.requestRender?.();
+function handleStageChatJumpToBottom(ctx: StageChatViewContext, data: string): boolean {
+	const keybindings = isKeybindingsLike(ctx.piKeybindings) ? ctx.piKeybindings : undefined;
+	if (data !== TRANSCRIPT_JUMP_TO_END_URL && !matchesAction(keybindings, data, TUI_ACTION.altScreenBottom))
+		return false;
+	ctx.chatHost.scrollToBottom();
+	return true;
 }
-
 function handleToolsExpandInput(ctx: StageChatViewContext, data: string): boolean {
 	const keybindings = isKeybindingsLike(ctx.piKeybindings) ? ctx.piKeybindings : undefined;
 	if (!matchesAction(keybindings, data, APP_ACTION.toolsExpand)) return false;
@@ -134,6 +118,10 @@ function handleMountedCustomUiInput(ctx: StageChatViewContext, data: string): bo
 	}
 	// Let scroll input reach the transcript so history stays scrollable while the
 	// question is shown, matching the standalone ask_user_question tool.
+	if (handleStageChatJumpToBottom(ctx, data)) {
+		ctx.requestRender?.();
+		return true;
+	}
 	if (ctx.chatHost.handleScrollInput(data)) {
 		ctx.requestRender?.();
 		return true;
@@ -141,9 +129,9 @@ function handleMountedCustomUiInput(ctx: StageChatViewContext, data: string): bo
 
 	const component = mounted.component;
 	setComponentFocused(component, ctx.focused);
-	component.handleInput?.(data);
+	const handled = component.handleInput?.(data) === true;
 	ctx.requestRender?.();
-	return true;
+	return handled;
 }
 
 function handlePromptInput(ctx: StageChatViewContext, data: string): void {

@@ -21,7 +21,11 @@
  *            pi docs/sdk.md createAgentSession
  */
 
-import type { CreateAgentSessionOptions, DefaultResourceLoaderInheritanceSnapshot } from "@bastani/atomic";
+import {
+	type CreateAgentSessionOptions,
+	type DefaultResourceLoaderInheritanceSnapshot,
+	isStaleExtensionContextError,
+} from "@bastani/atomic";
 import type { StageAdapters, StageSessionCreateResult, StageSessionRuntime } from "../runs/foreground/stage-runner.js";
 import { resolveStageGroup, stageHasIntercomAccess } from "../shared/intercom-group.js";
 import { type StageUiBroker, stageUiBroker } from "../shared/stage-ui-broker.js";
@@ -57,7 +61,6 @@ export type {
 	PiKeybindings,
 	PiOverlayHandle,
 	PiOverlayOptions,
-	PiRemoteTerminalControl,
 	PiTheme,
 	PiUIDialogOptions,
 	PiUISurface,
@@ -134,22 +137,64 @@ function isTestContext(): boolean {
 	return process.env.NODE_TEST_CONTEXT !== undefined || process.env.NODE_ENV === "test";
 }
 
+type StageSettingsManager = ReturnType<PiCodingAgentSdk["SettingsManager"]["create"]>;
+
+function attachSettingsManager(error: unknown, settingsManager: StageSettingsManager): unknown {
+	if (error !== null && (typeof error === "object" || typeof error === "function")) {
+		try {
+			if (Object.isExtensible(error)) {
+				Object.defineProperty(error, "settingsManager", {
+					configurable: true,
+					enumerable: false,
+					value: settingsManager,
+					writable: false,
+				});
+				return error;
+			}
+		} catch {
+			// Frozen or proxy errors cannot carry the private retry hint. Wrap them
+			// without replacing the original failure as the cause.
+		}
+	}
+	const wrapped = new Error(error instanceof Error ? error.message : String(error), { cause: error });
+	Object.defineProperty(wrapped, "settingsManager", {
+		configurable: true,
+		enumerable: false,
+		value: settingsManager,
+		writable: false,
+	});
+	return wrapped;
+}
+
 async function createPiSdkAgentSession(
 	options?: CreateAgentSessionOptions,
 	prepareOptions?: PrepareAtomicStageSessionOptions,
 ): Promise<StageSessionCreateResult> {
 	const sdk = (await import("@bastani/atomic")) as PiCodingAgentSdk;
-	const sessionOptions = await prepareAtomicStageSessionOptions(options, sdk, prepareOptions);
-	const result = await sdk.createAgentSession(sessionOptions);
-	// `CreateAgentSessionResult` is `{ session, extensionsResult, modelFallbackMessage? }`;
-	// workflow stages only consume `.session` (structurally an `AgentSession`,
-	// which is a superset of our `StageSessionRuntime` projection).
-	const resultSettingsManager = result.session.settingsManager;
-	const settingsManager = sessionOptions?.settingsManager ?? resultSettingsManager;
-	return {
-		session: result.session,
-		...(settingsManager?.getCodexFastModeSettings !== undefined ? { settingsManager } : {}),
-	};
+	let settingsManager: ReturnType<PiCodingAgentSdk["SettingsManager"]["create"]> | undefined;
+	try {
+		const sessionOptions = await prepareAtomicStageSessionOptions(options, sdk, {
+			...prepareOptions,
+			onSettingsManager: (manager) => {
+				settingsManager = manager;
+				prepareOptions?.onSettingsManager?.(manager);
+			},
+		});
+		settingsManager = sessionOptions?.settingsManager ?? settingsManager;
+		const result = await sdk.createAgentSession(sessionOptions);
+		// `CreateAgentSessionResult` is `{ session, extensionsResult, modelFallbackMessage? }`;
+		// workflow stages only consume `.session` (structurally an `AgentSession`,
+		// which is a superset of our `StageSessionRuntime` projection).
+		const resultSettingsManager = result.session.settingsManager;
+		settingsManager = sessionOptions?.settingsManager ?? resultSettingsManager ?? settingsManager;
+		return {
+			session: result.session,
+			...(settingsManager?.getCodexFastModeSettings !== undefined ? { settingsManager } : {}),
+		};
+	} catch (error) {
+		if (settingsManager !== undefined) throw attachSettingsManager(error, settingsManager);
+		throw error;
+	}
 }
 
 async function createTestAgentSession(_options?: CreateAgentSessionOptions): Promise<StageSessionCreateResult> {
@@ -243,9 +288,31 @@ function emitLateIntercomRoute(
 		workflowStageId: meta.stageId,
 		workflowStageName: meta.stageName,
 	};
-	pi.events.emit(LATE_STAGE_MESSAGE_EVENT, event as unknown as Record<string, unknown>);
+	try {
+		pi.events.emit(LATE_STAGE_MESSAGE_EVENT, event as unknown as Record<string, unknown>);
+	} catch (error) {
+		if (!isStaleExtensionContextError(error)) throw error;
+		// The captured runtime is gone; reject so callers can distinguish this drop
+		// from a route that was accepted. Do not retry through stale sendMessage.
+		return Promise.reject(error);
+	}
 	if (!event.handled) return undefined;
 	return event.completion ?? Promise.resolve();
+}
+
+/**
+ * Preserve one late-route contract: a resolved call means delivery was accepted,
+ * while a stale-runtime rejection tells the caller that the message was dropped.
+ * This helper normalizes stale synchronous host throws without hiding any other
+ * failure.
+ */
+function routeThroughStaleContextGuard(route: () => void | Promise<void>): void | Promise<void> {
+	try {
+		return route();
+	} catch (error) {
+		if (!isStaleExtensionContextError(error)) throw error;
+		return Promise.reject(error);
+	}
 }
 
 function makeWorkflowStageOrchestrationContext(
@@ -266,13 +333,15 @@ function makeWorkflowStageOrchestrationContext(
 			routeMessage(message, options) {
 				const intercomRoute = emitLateIntercomRoute(pi, meta, [message], options, false);
 				if (intercomRoute) return intercomRoute;
-				if (!pi.sendMessage) throw new Error("atomic-workflows: main-chat late-message route is unavailable");
-				return pi.sendMessage(message, options);
+				const sendMessage = pi.sendMessage;
+				if (!sendMessage) throw new Error("atomic-workflows: main-chat late-message route is unavailable");
+				return routeThroughStaleContextGuard(() => sendMessage(message, options));
 			},
 			routeMessages(messages, options) {
 				const intercomRoute = emitLateIntercomRoute(pi, meta, messages, options, true);
 				if (intercomRoute) return intercomRoute;
-				if (pi.sendMessages) return pi.sendMessages(messages, options);
+				const sendMessages = pi.sendMessages;
+				if (sendMessages) return routeThroughStaleContextGuard(() => sendMessages(messages, options));
 				const sendMessage = pi.sendMessage;
 				if (!sendMessage) throw new Error("atomic-workflows: main-chat late-message route is unavailable");
 				return (async () => {

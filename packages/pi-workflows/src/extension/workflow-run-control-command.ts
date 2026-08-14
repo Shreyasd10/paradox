@@ -129,7 +129,7 @@ export async function handleRunControlCommand(
 					return true;
 				}
 			}
-			const results = action === "quit" ? await quitAllRuns() : await interruptAllRuns();
+			const results = action === "quit" ? await quitAllRuns({ actor: "user" }) : await interruptAllRuns();
 			const successes = results.filter((result) => result.ok);
 			const changed = successes.length;
 			const failures = results.filter((result) => !result.ok);
@@ -171,7 +171,7 @@ export async function handleRunControlCommand(
 				return true;
 			}
 			try {
-				const result = await quitRun(resolved.runId);
+				const result = await quitRun(resolved.runId, { actor: "user" });
 				if (result.ok) print(`Run ${result.runId} quit and can be resumed with /workflow resume.`);
 				else if (result.reason === "already_ended") print(`Run ${result.runId} already ended.`);
 				else if (result.reason === "no_active_stages") {
@@ -275,20 +275,24 @@ export async function handleRunControlCommand(
 					}
 					const run = store.runs().find((r) => r.id === resolved.runId);
 					const isPaused = run !== undefined && workflowHasPausedState(store, resolved.runId);
+					const isDurableAuthorExit = run?.exited === true && run.status === "failed" && run.resumable === true;
 					const isResumableContinuation =
 						run !== undefined &&
 						!isPaused &&
 						run.exitReason !== "quit" &&
 						isWorkflowRunResumable(workflowRunResumeCandidate(run));
+					if (isDurableAuthorExit) {
+						return await handleDurableResume(resolved.runId, ctx, reporter, deps);
+					}
 					if (isResumableContinuation) {
 						await ensureWorkflowResourcesVisible();
 						const continuation = await deps
 							.runtimeForContext(ctx)
-							.resumeFailedRun(resolved.runId, undefined, { policy });
+							.resumeFailedRun(resolved.runId, undefined, { policy, actor: "user" });
 						continuation.ok ? print(continuation.message) : fail(continuation.message);
 					} else {
 						try {
-							const result = await resumeRun(resolved.runId, {});
+							const result = await resumeRun(resolved.runId, { actor: "user" });
 							if (result.ok && !isPaused && result.mode === "snapshot" && run?.exitReason === "quit") {
 								return await handleDurableResume(resolved.runId, ctx, reporter, deps);
 							}
@@ -443,7 +447,7 @@ export async function handleRunControlCommand(
 		const stageRunId = resolvedStage.runId ?? runId;
 		if (action === "pause") {
 			try {
-				const result = await pauseRun(stageRunId, { stageId });
+				const result = await pauseRun(stageRunId, { stageId, actor: "user" });
 				if (!result.ok) {
 					fail(
 						result.reason === "not_found"
@@ -471,6 +475,7 @@ export async function handleRunControlCommand(
 		const hadPausedRunState = run?.status === "paused";
 		const hadPausedStageState = run !== undefined && workflowHasPausedStages(store, stageRunId);
 		const isPaused = run !== undefined && workflowHasPausedState(store, stageRunId);
+		const isDurableAuthorExit = run?.exited === true && run.status === "failed" && run.resumable === true;
 		const isResumableContinuation =
 			run !== undefined &&
 			!isPaused &&
@@ -493,9 +498,14 @@ export async function handleRunControlCommand(
 			);
 			return true;
 		}
+		if (isDurableAuthorExit) {
+			return await handleDurableResume(stageRunId, ctx, reporter, deps);
+		}
 		if (isResumableContinuation) {
 			await ensureWorkflowResourcesVisible();
-			const continuation = await deps.runtimeForContext(ctx).resumeFailedRun(stageRunId, stageId, { policy });
+			const continuation = await deps
+				.runtimeForContext(ctx)
+				.resumeFailedRun(stageRunId, stageId, { policy, actor: "user" });
 			continuation.ok ? print(continuation.message) : fail(continuation.message);
 			return true;
 		}
@@ -507,7 +517,7 @@ export async function handleRunControlCommand(
 		}
 		let result: Awaited<ReturnType<typeof resumeRun>>;
 		try {
-			result = await resumeRun(stageRunId, { stageId, message });
+			result = await resumeRun(stageRunId, { stageId, message, actor: "user" });
 		} catch (error) {
 			fail(`Failed to resume run ${stageRunId}: ${error instanceof Error ? error.message : String(error)}`);
 			return true;

@@ -1,5 +1,6 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { isCodexFastModeCandidateModelId } from "@bastani/atomic";
+import type { WorkflowActor } from "../../shared/store-types.js";
 import { HOST_CONFIG_DIR_NAME } from "../../shared/host-paths.js";
 import type { StageOptions, WorkflowArtifact, WorkflowTaskOptions, WorkflowTaskStep } from "../../shared/types.js";
 import { workflowArtifactRunPath } from "../../shared/workflow-artifacts.js";
@@ -179,11 +180,13 @@ export function workflowInvocationMetadata(
 	inputDefaults: Partial<StageOptions>,
 	workflowInvocationCwd: string,
 	cache?: GitWorktreeSetupCache,
+	origin?: WorkflowActor,
 ): {
 	readonly invocationCwd: string;
 	readonly workflowCwd?: string;
 	readonly repositoryRoot?: string;
 	readonly gitWorktreeRoot?: string;
+	readonly origin?: WorkflowActor;
 } {
 	const setup = setupWorkflowInputGitWorktree(inputDefaults, workflowInvocationCwd, cache);
 	return {
@@ -191,6 +194,7 @@ export function workflowInvocationMetadata(
 		...(setup !== undefined
 			? { workflowCwd: setup.cwd, repositoryRoot: setup.repositoryRoot, gitWorktreeRoot: setup.worktreeRoot }
 			: {}),
+		...(origin !== undefined ? { origin } : {}),
 	};
 }
 

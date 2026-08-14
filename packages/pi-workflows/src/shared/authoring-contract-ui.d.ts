@@ -2,7 +2,7 @@
 import type { KeybindingsManager, Theme } from "@bastani/atomic";
 import type { Component, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import type { TSchema } from "typebox";
-import type { RunStatus, StageAdapters, StageContext, StageOptions, WorkflowAction, WorkflowArtifact, WorkflowChainOptions, WorkflowChildResult, WorkflowContextMode, WorkflowDetailsMode, WorkflowDetailsStatus, WorkflowExecutionMode, WorkflowExitOptions, WorkflowInputSchemaMap, WorkflowInputValues, WorkflowMcpPort, WorkflowModelCatalogPort, WorkflowOutputSchemaMap, WorkflowOutputValues, WorkflowParallelOptions, WorkflowPersistencePort, WorkflowRunChildArgs, WorkflowSerializableObject, WorkflowSerializableValue, WorkflowTaskOptions, WorkflowTaskResult, WorkflowTaskStep } from "./authoring-contract-stage.js";
+import type { RunStatus, StageAdapters, StageContext, StageOptions, WorkflowAction, WorkflowActor, WorkflowArtifact, WorkflowChainOptions, WorkflowChildResult, WorkflowContextMode, WorkflowDetailsMode, WorkflowDetailsStatus, WorkflowExecutionMode, WorkflowExitOptions, WorkflowInputSchemaMap, WorkflowInputValues, WorkflowMcpPort, WorkflowModelCatalogPort, WorkflowOutputSchemaMap, WorkflowOutputValues, WorkflowParallelOptions, WorkflowPersistencePort, WorkflowRunChildArgs, WorkflowSerializableObject, WorkflowSerializableValue, WorkflowTaskOptions, WorkflowTaskResult, WorkflowTaskStep } from "./authoring-contract-stage.js";
 export type WorkflowCustomUiComponent = Component & {
     dispose?(): void;
 };
@@ -208,6 +208,10 @@ export interface RunOpts {
     readonly toolAdmissionBoundary?: object;
     readonly runId?: string;
     readonly continuation?: RunContinuationOpts;
+    /** Who launched this run. A continuation inherits its source run's origin instead. */
+    readonly origin?: WorkflowActor;
+    /** Who requested the resume that produced this continuation run. */
+    readonly resumeActor?: WorkflowActor;
     readonly parentRun?: WorkflowParentRunLink;
     readonly onRunStart?: (snapshot: RunSnapshot) => void;
     readonly onStageStart?: (runId: string, snapshot: StageSnapshot) => void;

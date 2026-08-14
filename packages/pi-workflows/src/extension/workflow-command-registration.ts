@@ -1,5 +1,6 @@
 import { inspectRun } from "../runs/background/status.js";
 import { renderInputsSchema } from "../shared/render-inputs-schema.js";
+import { resolveRunIndicatorStatuses } from "../shared/run-indicator-status.js";
 import { schemaIsRequired } from "../shared/schema-introspection.js";
 import { store } from "../shared/store.js";
 import type { WorkflowExecutionPolicy } from "../shared/types.js";
@@ -152,14 +153,25 @@ async function workflowSlashHandler(
 		if (target && !target.startsWith("--")) {
 			const resolved = resolveRunId(target);
 			if (resolved.kind === "malformed") return fail(resolved.message);
-			if (resolved.kind === "not_found") return fail(`Run not found: ${target}`);
+			if (resolved.kind === "not_found") {
+				const durable = await deps.runtimeForContext(ctx).inspectDurableWorkflow(target);
+				if (durable.kind !== "found") return fail(durable.message);
+				emitChatSurface(pi, { kind: "detail", detail: durable.detail });
+				return;
+			}
 			const inspected = inspectRun(resolved.runId);
 			if (!inspected.ok) return fail(`Run not found: ${target}`);
 			emitChatSurface(pi, { kind: "detail", detail: inspected.detail });
 			return;
 		}
-		const rows = selectRunsForPicker(store.runs(), "", true, Date.now());
-		emitChatSurface(pi, { kind: "status", runs: rows.map((r) => r.run) });
+		const capturedRuns = store.graphSnapshot().runs;
+		const rows = selectRunsForPicker(capturedRuns, "", true, Date.now());
+		const visibleRuns = rows.map((r) => r.run);
+		emitChatSurface(pi, {
+			kind: "status",
+			runs: visibleRuns,
+			indicatorStatuses: resolveRunIndicatorStatuses(visibleRuns, capturedRuns),
+		});
 		return;
 	}
 	if (subcommand === "reload") {
@@ -250,7 +262,9 @@ async function workflowSlashHandler(
 
 	await ensureWorkflowResourcesVisible();
 	const result = await deps.runWithLifecycleSuppressedForPolicy(policy, () =>
-		deps.runtimeForContext(ctx).dispatch({ workflow: workflowName, inputs: mergedInputs, action: "run" }, { policy }),
+		deps
+			.runtimeForContext(ctx)
+			.dispatch({ workflow: workflowName, inputs: mergedInputs, action: "run" }, { policy, origin: "user" }),
 	);
 	if (result.action !== "run" || !("runId" in result)) return;
 	const runResult = result as Extract<WorkflowToolResult, { action: "run"; runId: string }>;

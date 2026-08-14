@@ -1,10 +1,11 @@
 import type { RunSnapshot, StageSnapshot } from "../shared/store-types.js";
 import { boundaryTransitionError, resolveBoundaryLifecycle } from "./boundary-lifecycle.js";
-import type {
-	DurableCheckpoint,
-	DurableStageCheckpoint,
-	DurableStageRunTopology,
-	DurableToolCheckpoint,
+import {
+	DURABLE_TOOL_TOPOLOGY_VERSION,
+	type DurableCheckpoint,
+	type DurableStageCheckpoint,
+	type DurableStageRunTopology,
+	type DurableToolCheckpoint,
 } from "./types.js";
 import { parseLegacyWorkflowChildResult, parseWorkflowChildResult } from "./workflow-child-result.js";
 
@@ -28,7 +29,11 @@ export interface StageDraft {
 	readonly topology?: DurableStageCheckpoint["topology"];
 }
 
-export function validBoundaryRecordSet(checkpoints: readonly DurableCheckpoint[], strict: boolean): boolean {
+export function validBoundaryRecordSet(
+	checkpoints: readonly DurableCheckpoint[],
+	strict: boolean,
+	requireActiveFingerprint = false,
+): boolean {
 	const stages = checkpoints.filter((item): item is DurableStageCheckpoint => item.kind === "stage");
 	const boundaries = stages.filter((item) => item.topology?.boundary !== undefined);
 	const startsByReplay = new Map<string, DurableStageCheckpoint[]>();
@@ -47,27 +52,53 @@ export function validBoundaryRecordSet(checkpoints: readonly DurableCheckpoint[]
 		)
 	)
 		return false;
-	return [...startsByReplay.values()].every(
-		(starts) => boundaryTransitionError(starts[0]!, stages, strict) === undefined,
-	);
+	return [...startsByReplay.values()].every((starts) => {
+		const start = starts[0]!;
+		if (boundaryTransitionError(start, stages, strict) !== undefined) return false;
+		if (!requireActiveFingerprint || start.topology!.boundary!.invocationFingerprint !== undefined) return true;
+		return (
+			stages.some(
+				(stage) =>
+					stage.replayKey === start.replayKey &&
+					stage.topology?.boundary?.event === "terminal" &&
+					stage.topology.boundary.status === "completed",
+			) && boundaryTransitionError(start, stages, true) === undefined
+		);
+	});
 }
 
 export function validStageGroup(
 	drafts: readonly StageDraft[],
 	runId: string,
-	allowedNodeIds: ReadonlySet<string> = new Set(),
+	rootRunId: string,
+	tools: readonly DurableToolCheckpoint[] = [],
 ): boolean {
 	if (drafts.some((draft) => draft.topology!.stageId.length === 0)) return false;
-	const stageIds = new Set(drafts.map((draft) => draft.topology!.stageId));
-	if (stageIds.size !== drafts.length) return false;
-	const ids = new Set([...allowedNodeIds, ...stageIds]);
-	if (ids.size !== allowedNodeIds.size + stageIds.size) return false;
+	if (
+		tools.some(
+			(tool) =>
+				tool.topology !== undefined &&
+				(tool.topology.version !== DURABLE_TOOL_TOPOLOGY_VERSION || tool.topology.nodeId.length === 0),
+		)
+	)
+		return false;
+	const stageIds = drafts.map((draft) => draft.topology!.stageId);
+	const toolIds = tools.map((tool) => tool.topology?.nodeId ?? tool.checkpointId);
+	const ids = new Set([...stageIds, ...toolIds]);
+	if (ids.size !== stageIds.length + toolIds.length) return false;
 	const orders = drafts.flatMap((draft) =>
 		draft.topology!.sourceOrder === undefined ? [] : [draft.topology!.sourceOrder],
 	);
 	if (new Set(orders).size !== orders.length) return false;
-	if (drafts.some((draft) => draft.topology!.parentIds.some((parentId) => !ids.has(parentId)))) return false;
-	const runs = drafts.flatMap((draft) => (draft.topology?.run === undefined ? [] : [draft.topology.run]));
+	const parentEntries: ReadonlyArray<readonly [string, readonly string[]]> = [
+		...drafts.map((draft) => [draft.topology!.stageId, draft.topology!.parentIds] as const),
+		...tools.map((tool) => [tool.topology?.nodeId ?? tool.checkpointId, tool.topology?.parentIds ?? []] as const),
+	];
+	if (parentEntries.some(([, parentIds]) => parentIds.some((parentId) => !ids.has(parentId)))) return false;
+	const runs = [
+		...drafts.flatMap((draft) => (draft.topology?.run === undefined ? [] : [draft.topology.run])),
+		...tools.flatMap((tool) => (tool.topology?.run === undefined ? [] : [tool.topology.run])),
+	];
 	const first = runs[0];
 	if (
 		runs.some(
@@ -81,19 +112,26 @@ export function validStageGroup(
 		)
 	)
 		return false;
-	const parents = new Map(drafts.map((draft) => [draft.topology!.stageId, draft.topology!.parentIds]));
+	if (
+		runId === rootRunId &&
+		runs.some(
+			(run) => run.parentRunId !== undefined || run.parentStageId !== undefined || run.rootRunId !== undefined,
+		)
+	)
+		return false;
+	const parents = new Map(parentEntries);
 	const visiting = new Set<string>();
 	const visited = new Set<string>();
-	const cyclic = (stageId: string): boolean => {
-		if (visiting.has(stageId)) return true;
-		if (visited.has(stageId)) return false;
-		visiting.add(stageId);
-		if ((parents.get(stageId) ?? []).some(cyclic)) return true;
-		visiting.delete(stageId);
-		visited.add(stageId);
+	const cyclic = (nodeId: string): boolean => {
+		if (visiting.has(nodeId)) return true;
+		if (visited.has(nodeId)) return false;
+		visiting.add(nodeId);
+		if ((parents.get(nodeId) ?? []).some(cyclic)) return true;
+		visiting.delete(nodeId);
+		visited.add(nodeId);
 		return false;
 	};
-	return ![...stageIds].some(cyclic);
+	return ![...ids].some(cyclic);
 }
 
 export function compareDraftSourceOrder(left: StageDraft, right: StageDraft): number {
@@ -119,15 +157,27 @@ export function validateRunGroups(
 	grouped: Map<string, StageDraft[]>,
 	rootRunId: string,
 	tools: readonly DurableToolCheckpoint[],
+	checkpoints: readonly DurableCheckpoint[],
 ): boolean {
 	const toolsFor = (runId: string) =>
 		tools.filter((checkpoint) => (checkpoint.topology?.run?.runId ?? rootRunId) === runId);
 	const owners = new Map<string, StageDraft>();
+	const syntheticChildIds = new Set<string>();
 	for (const [parentRunId, drafts] of grouped) {
 		for (const draft of drafts) {
 			const childRunId = childRunIdFromDraft(draft);
 			if (childRunId === undefined) continue;
-			if (!grouped.has(childRunId) || childRunId === parentRunId || owners.has(childRunId)) return false;
+			if (childRunId === parentRunId || owners.has(childRunId)) return false;
+			if (!grouped.has(childRunId)) {
+				if (
+					!isSyntheticExitedChild(draft, parentRunId, childRunId, rootRunId) ||
+					childScopedEvidenceExists(checkpoints, draft.replayKey, childRunId)
+				)
+					return false;
+				syntheticChildIds.add(childRunId);
+				owners.set(childRunId, draft);
+				continue;
+			}
 			const childRun = runTopologyFor(grouped.get(childRunId)!, toolsFor(childRunId));
 			if (
 				childRun?.parentRunId !== parentRunId ||
@@ -146,6 +196,7 @@ export function validateRunGroups(
 			return false;
 	}
 	for (const runId of owners.keys()) {
+		if (syntheticChildIds.has(runId)) continue;
 		const seen = new Set<string>();
 		let current: string | undefined = runId;
 		while (current !== undefined && current !== rootRunId) {
@@ -156,6 +207,48 @@ export function validateRunGroups(
 		if (current !== rootRunId) return false;
 	}
 	return true;
+}
+
+export function isSyntheticExitedChild(
+	draft: StageDraft,
+	parentRunId: string,
+	childRunId: string,
+	rootRunId: string,
+): boolean {
+	const child = workflowChildFromDraft(draft);
+	const boundary = draft.topology?.boundary;
+	return (
+		child?.runId === childRunId &&
+		child.exited === true &&
+		boundary?.event === "terminal" &&
+		boundary.status === "completed" &&
+		boundary.child.runId === childRunId &&
+		boundary.child.parentRunId === parentRunId &&
+		boundary.child.parentStageId === draft.topology?.stageId &&
+		boundary.child.rootRunId === rootRunId
+	);
+}
+
+/** Raw scoped records disprove a zero-stage child reconstruction. */
+export function childScopedEvidenceExists(
+	checkpoints: readonly DurableCheckpoint[],
+	boundaryReplayKey: string,
+	childRunId: string,
+): boolean {
+	const prefix = `${boundaryReplayKey}:`;
+	return checkpoints.some((checkpoint) => {
+		const lookupIdentity =
+			checkpoint.kind === "tool"
+				? checkpoint.argsHash
+				: checkpoint.kind === "ui"
+					? checkpoint.promptHash
+					: checkpoint.replayKey;
+		return (
+			checkpoint.checkpointId.startsWith(prefix) ||
+			lookupIdentity.startsWith(prefix) ||
+			(checkpoint.kind !== "ui" && checkpoint.topology?.run?.runId === childRunId)
+		);
+	});
 }
 
 export function retainReachableRunGroups(grouped: Map<string, StageDraft[]>, rootRunId: string): void {
@@ -267,14 +360,16 @@ function valueOrExisting<
 
 export function workflowChildFromDraft(draft: StageDraft): StageSnapshot["workflowChild"] | undefined {
 	const strict = parseWorkflowChildResult(draft.output);
-	const child = strict ?? (hasCurrentStageIdentity(draft) ? undefined : parseLegacyWorkflowChildResult(draft.output));
+	const legacy = hasCurrentStageIdentity(draft) ? undefined : parseLegacyWorkflowChildResult(draft.output);
+	const child = strict ?? legacy;
 	if (child === undefined) return undefined;
+	const exited = strict?.exited ?? false;
 	return {
 		alias: child.workflow,
 		workflow: child.workflow,
 		runId: child.runId,
 		status: child.status,
-		...(child.exited !== undefined ? { exited: child.exited } : {}),
+		exited,
 		outputs: child.outputs,
 		...(typeof child.exitReason === "string" ? { exitReason: child.exitReason } : {}),
 	};

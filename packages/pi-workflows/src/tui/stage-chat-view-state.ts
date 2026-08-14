@@ -7,7 +7,6 @@ import { hexToAnsi, RESET } from "./color-utils.js";
 import { createPromptCardState } from "./prompt-card.js";
 import { resolveStageChatViewportRows } from "./stage-chat-layout.js";
 import { hideMountedCustomUi, releaseMountedCustomUi, showCustomUi } from "./stage-chat-view-custom-ui.js";
-import { defaultStageChatMouseScrollCapture } from "./overlay-terminal-modes.js";
 import {
 	invalidateStageChatDeliveryLifecycles,
 	subscribeStageChatDeliveryActivity,
@@ -50,7 +49,6 @@ export function initializeStageChatView(ctx: StageChatViewContext, opts: StageCh
 	ctx.requestRender = opts.requestRender;
 	ctx.requestFocus = opts.requestFocus;
 	ctx.focusHoldTimer = undefined;
-	ctx.getViewportRows = opts.getViewportRows;
 	ctx.piTui = opts.piTui;
 	ctx.piTheme = opts.piTheme;
 	ctx.piKeybindings = opts.piKeybindings;
@@ -70,8 +68,6 @@ export function initializeStageChatView(ctx: StageChatViewContext, opts: StageCh
 	ctx.promptMaxScroll = 0;
 	ctx.promptVisibleRows = 0;
 	ctx.localPaused = false;
-	ctx.mouseScrollCaptureEnabled = defaultStageChatMouseScrollCapture();
-	ctx.copyNotice = null;
 	ctx.lastObservedStageStatus = undefined;
 	ctx.lastObservedRunStatus = undefined;
 	ctx.seenNoticeIds = new Set<string>();
@@ -317,10 +313,21 @@ function handleStoreUpdate(ctx: StageChatViewContext): void {
 	if (changed || hadAnimationTick !== ctx.chatHost.hasAnimationTick()) ctx.requestRender?.();
 }
 
+/**
+ * Snapshot the transcript a freshly mounted chat has to start from.
+ *
+ * The handle reports settled messages; an assistant message still streaming is
+ * not one of them until its turn ends. `message_update` carries only the next
+ * delta, so a chat opened part-way through a stage's turn would otherwise show
+ * nothing until that turn finished — a stage held mid-turn shows nothing at
+ * all. The session's in-flight message closes that window, and the live
+ * subscription installed after this continues it delta by delta.
+ */
 function snapshotMessagesFromHandle(ctx: StageChatViewContext): void {
 	const handle = liveHandle(ctx);
 	if (!handle) return;
 	ctx.chatHost.appendMessages(handle.messages);
+	ctx.chatHost.hydrateStreamingAssistantMessage(handle.agentSession?.agent?.state.streamingMessage);
 }
 
 function snapshotMessagesFromSessionFile(ctx: StageChatViewContext, stage: StageSnapshot | undefined): void {
@@ -462,7 +469,7 @@ export function resolvePromptResponse(
 }
 
 export function viewLineCount(ctx: StageChatViewContext): number {
-	const reported = ctx.getViewportRows?.();
+	const reported = ctx.piTui?.terminal?.rows;
 	if (typeof reported !== "number" || !Number.isFinite(reported)) {
 		return VIEW_LINE_COUNT;
 	}

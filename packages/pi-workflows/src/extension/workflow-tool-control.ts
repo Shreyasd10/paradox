@@ -70,7 +70,7 @@ export async function workflowPauseAction(args: WorkflowToolArgs): Promise<Workf
 			return { action, runId: "--all", status: "noop", message: allStageConflictMessage("pause") };
 		}
 		try {
-			const results = await pauseAllRuns();
+			const results = await pauseAllRuns({ actor: "agent" });
 			const paused = results.filter((result) => result.ok).length;
 			return {
 				action,
@@ -100,7 +100,7 @@ export async function workflowPauseAction(args: WorkflowToolArgs): Promise<Workf
 	if (!stage.ok) return { action, runId: target.runId, status: "noop", message: stage.message };
 	const stageRunId = stage.runId ?? target.runId;
 	try {
-		const result = await pauseRun(stageRunId, { stageId: stage.stageId });
+		const result = await pauseRun(stageRunId, { stageId: stage.stageId, actor: "agent" });
 		return result.ok
 			? {
 					action,
@@ -241,7 +241,7 @@ export async function workflowQuitAction(args: WorkflowToolArgs): Promise<Workfl
 		if (args.stageId !== undefined && args.stageId.length > 0) {
 			return { action, runId: "--all", status: "noop", message: allStageConflictMessage("quit") };
 		}
-		const results = await quitAllRuns();
+		const results = await quitAllRuns({ actor: "agent" });
 		const successes = results.filter((result) => result.ok);
 		const quitCount = successes.length;
 		const failures = results.filter((result) => !result.ok);
@@ -264,7 +264,7 @@ export async function workflowQuitAction(args: WorkflowToolArgs): Promise<Workfl
 	if (!controlNode.ok) return { action, runId: target.runId, status: "noop", message: controlNode.message };
 	if (controlNode.kind === "tool") return quitToolNodeAction(controlNode.runId, controlNode.nodeId, action);
 	try {
-		const result = await quitRun(target.runId);
+		const result = await quitRun(target.runId, { actor: "agent" });
 		if (result.ok) {
 			return {
 				action,
@@ -354,7 +354,7 @@ async function resumeDurableShadow(
 	} catch (error) {
 		warning = formatWorkflowResourceLoadWarning(error);
 	}
-	const resumed = await runtime.resumeDurableWorkflow(runId, { policy: deps.policy });
+	const resumed = await runtime.resumeDurableWorkflow(runId, { policy: deps.policy, actor: "agent" });
 	const message = warning === undefined ? resumed.message : `${warning}\n\n${resumed.message}`;
 	return {
 		action: "resume",
@@ -369,7 +369,7 @@ async function resumePreparedDurableTarget(
 	deps: Pick<WorkflowControlActionDeps, "getRuntime" | "policy">,
 ): Promise<WorkflowToolResult> {
 	try {
-		const resumed = await deps.getRuntime().resumeDurableWorkflow(runId, { policy: deps.policy });
+		const resumed = await deps.getRuntime().resumeDurableWorkflow(runId, { policy: deps.policy, actor: "agent" });
 		return {
 			action: "resume",
 			runId: resumed.ok ? resumed.runId : runId,
@@ -482,18 +482,22 @@ export async function workflowResumeAction(
 	const hadPausedRunState = run?.status === "paused";
 	const hadPausedStageState = run !== undefined && workflowHasPausedStages(store, stageRunId);
 	const isPaused = run !== undefined && workflowHasPausedState(store, stageRunId);
+	const isDurableAuthorExit = run?.exited === true && run.status === "failed" && run.resumable === true;
 	const isResumableContinuation =
 		run !== undefined &&
 		!isPaused &&
 		run.exitReason !== "quit" &&
 		isWorkflowRunResumable(workflowRunResumeCandidate(run));
+	if (isDurableAuthorExit) return resumeDurableShadow(stageRunId, deps);
 	if (isResumableContinuation) {
 		try {
 			await deps.ensureWorkflowResourcesLoaded();
 		} catch (error) {
 			warning = formatWorkflowResourceLoadWarning(error);
 		}
-		const continuation = await deps.getRuntime().resumeFailedRun(stageRunId, stage.stageId, { policy: deps.policy });
+		const continuation = await deps
+			.getRuntime()
+			.resumeFailedRun(stageRunId, stage.stageId, { policy: deps.policy, actor: "agent" });
 		const message = warning === undefined ? continuation.message : `${warning}\n\n${continuation.message}`;
 		return {
 			action: "resume",
@@ -503,7 +507,7 @@ export async function workflowResumeAction(
 		};
 	}
 	try {
-		const result = await resumeRun(stageRunId, { stageId: stage.stageId, message: args.message });
+		const result = await resumeRun(stageRunId, { stageId: stage.stageId, message: args.message, actor: "agent" });
 		if (result.ok) {
 			const runLevelResumed =
 				hadPausedRunState &&

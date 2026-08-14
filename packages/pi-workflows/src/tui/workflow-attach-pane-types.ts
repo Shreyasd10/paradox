@@ -57,14 +57,6 @@ export interface WorkflowAttachPaneOpts {
 	/** Owning nested run for `initialAttachStageId`; omitted stages resolve through the root graph. */
 	initialAttachRunId?: string;
 	/**
-	 * Optional accessor returning the current terminal row count. Threaded
-	 * into both `GraphView` and `StageChatView` so the overlay renders a
-	 * frame that fills the full viewport instead of a fixed 32-row pane.
-	 * Returns `undefined` when the host has not surfaced terminal
-	 * dimensions; views fall back to their constant row budget.
-	 */
-	getViewportRows?: () => number | undefined;
-	/**
 	 * Render-tick callback supplied by the overlay host. Forwarded to the
 	 * embedded `GraphView` so its 10 FPS animation tick (running-stage
 	 * border pulse, duration counter) can request frames without a key
@@ -78,13 +70,6 @@ export interface WorkflowAttachPaneOpts {
 	 * the overlay and the UI is not left input-dead (#1120).
 	 */
 	requestFocus?: () => void;
-	/**
-	 * Host hook for terminal mouse reporting. Graph mode uses wheel input
-	 * for canvas scrolling. Native TTY stage-chat captures the wheel so
-	 * transcript scrolling stays in-pane; Cursor/VS Code starts in copy
-	 * mode so Cmd/Ctrl+C can select text. ctrl+t toggles the two.
-	 */
-	setMouseScrollTracking?: (enabled: boolean) => void;
 	/** Optional clock injection for deterministic transition-quarantine tests. */
 	now?: () => number;
 }

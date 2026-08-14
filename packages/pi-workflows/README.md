@@ -5,10 +5,53 @@ packaged as an installable extension for **stock pi**: multi-stage, DAG-driven
 workflow execution with tracked stages, durable resumable runs, human-in-the-loop
 gates, parallel fan-out, and a graph orchestrator pane (`F2`).
 
-This is the exact extension shipped inside `@bastani/atomic@0.9.12` (vendored
+This is the exact extension shipped inside `@bastani/atomic@0.9.13` (vendored
 from its published tarball so the extension code and the SDK it links against
 are always the same release), repackaged with `@bastani/atomic` as a regular
 dependency so pi's extension loader can resolve it.
+
+## Patched pi host (main-chat "Jump to bottom")
+
+Stock pi's host does not ship the "Jump to bottom" follow indicator that
+atomic shows in its main chat when the transcript is scrolled away from the
+live end (it is host code in atomic, not extension code). This repo patches
+the installed `@earendil-works/pi-coding-agent@0.84.1` host in place:
+
+- `dist/modes/interactive/components/transcript-follow-indicator.js` — the
+  indicator pill (ported from atomic).
+- `dist/modes/interactive/interactive-mode.js` — mounts the indicator in the
+  fullscreen dock (above pending messages) and routes `atomic-ui://transcript/jump-to-end`
+  hyperlink clicks: a focused overlay (e.g. the workflow stage chat) receives
+  the URL so it can jump its own transcript; otherwise the main transcript
+  scrolls to the live end. The `End` key (`tui.altScreen.bottom`) works
+  without the patch.
+
+Backups and the re-apply script live in `~/.pi/local/pi-patch-backup/`
+(original + patched `interactive-mode.js`, the component). After `pi update`
+replaces the host, re-apply with:
+
+```bash
+bash scripts/reapply-pi-host-patch.sh
+```
+
+The script skips when the patch is already applied and refuses to clobber a
+host file that no longer matches the 0.84.1 baseline.
+
+### Automatic guard (recommended)
+
+Install a launchd agent that watches the pi host directory and re-applies the
+patch automatically after every `pi update` — no remembering needed:
+
+```bash
+bash scripts/install-pi-host-patch-guard.sh
+# remove later with: bash scripts/install-pi-host-patch-guard.sh --uninstall
+```
+
+The guard runs `scripts/auto-apply-pi-host-patch.mjs` (anchor-based, so it
+survives minor pi version bumps that keep the same layout structure). It
+syntax-checks the result, logs to `~/.pi/local/pi-patch-backup/auto-apply.log`,
+and shows a macOS notification if it needs manual re-baselining (anchors
+moved) — the only time you'd ever have to think about it.
 
 ## Install
 

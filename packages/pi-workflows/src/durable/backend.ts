@@ -44,6 +44,10 @@ export type DurableInactiveDeleteResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly reason: "not_found" | "running" };
 
+export type DurableWorkflowHydrationResult =
+	| { readonly kind: "current"; readonly handle: DurableWorkflowHandle }
+	| { readonly kind: "absent" | "deleted" | "malformed" };
+
 /** DBOS is the sole persistent implementation. In-memory is a test seam and the non-durable last-resort fallback. */
 export interface DurableWorkflowBackend {
 	/** Whether state survives the current process. */
@@ -154,6 +158,8 @@ export interface DurableWorkflowBackend {
 
 	/** Hydrate one workflow from persistent storage. */
 	hydrateWorkflow(workflowId: string): Promise<void>;
+	/** Optional exact, read-only hydration classification for targeted inspection. */
+	hydrateWorkflowForInspection?(workflowId: string): Promise<DurableWorkflowHydrationResult>;
 	/** Hydrate all catalog candidates from persistent storage. */
 	hydrateResumableWorkflows(): Promise<void>;
 	promptReservationScope(workflowId: string): { readonly rootWorkflowId: string; readonly scope: string };
@@ -203,6 +209,11 @@ export class InMemoryDurableBackend implements DurableWorkflowBackend {
 				: existing?.handle.invocationCwd !== undefined
 					? { invocationCwd: existing.handle.invocationCwd }
 					: {}),
+			...(handle.origin !== undefined
+				? { origin: handle.origin }
+				: existing?.handle.origin !== undefined
+					? { origin: existing.handle.origin }
+					: {}),
 			...(handle.workflowCwd !== undefined
 				? { workflowCwd: handle.workflowCwd }
 				: existing?.handle.workflowCwd !== undefined
@@ -226,7 +237,7 @@ export class InMemoryDurableBackend implements DurableWorkflowBackend {
 			...(handle.rootWorkflowId !== undefined ? { rootWorkflowId: handle.rootWorkflowId } : {}),
 			...(handle.resumable !== undefined ? { resumable: handle.resumable } : {}),
 			...workflowFailureFields(
-				handle.error !== undefined ? handle : handle.status === "running" ? undefined : existing?.handle,
+				hasWorkflowFailureMetadata(handle) ? handle : handle.status === "running" ? undefined : existing?.handle,
 			),
 			...(handle.ownerExecutorId !== undefined
 				? { ownerExecutorId: handle.ownerExecutorId }
@@ -347,6 +358,11 @@ export class InMemoryDurableBackend implements DurableWorkflowBackend {
 	}
 
 	async hydrateWorkflow(_workflowId: string): Promise<void> {}
+	async hydrateWorkflowForInspection(workflowId: string): Promise<DurableWorkflowHydrationResult> {
+		const handle = this.getLoadableWorkflow(workflowId);
+		if (handle !== undefined) return { kind: "current", handle };
+		return { kind: this.deletedWorkflowIds.has(workflowId) ? "deleted" : "absent" };
+	}
 
 	async hydrateResumableWorkflows(): Promise<void> {}
 
@@ -366,6 +382,8 @@ export class InMemoryDurableBackend implements DurableWorkflowBackend {
 		rec.handle = {
 			...rec.handle,
 			error: undefined,
+			exited: undefined,
+			exitReason: undefined,
 			failureKind: undefined,
 			failureCode: undefined,
 			failureRecoverability: undefined,
@@ -474,6 +492,7 @@ export class InMemoryDurableBackend implements DurableWorkflowBackend {
 			...(h.resumable !== undefined ? { resumable: h.resumable } : {}),
 			...workflowFailureFields(h),
 			...(h.invocationCwd !== undefined ? { invocationCwd: h.invocationCwd } : {}),
+			...(h.origin !== undefined ? { origin: h.origin } : {}),
 			...(h.workflowCwd !== undefined ? { workflowCwd: h.workflowCwd } : {}),
 			...(h.repositoryRoot !== undefined ? { repositoryRoot: h.repositoryRoot } : {}),
 			...(h.gitWorktreeRoot !== undefined ? { gitWorktreeRoot: h.gitWorktreeRoot } : {}),
@@ -521,12 +540,27 @@ function isHistoricalHandle(handle: DurableWorkflowHandle): boolean {
 	);
 }
 
+function hasWorkflowFailureMetadata(handle: Partial<DurableWorkflowHandle>): boolean {
+	return (
+		handle.error !== undefined ||
+		handle.exited !== undefined ||
+		handle.exitReason !== undefined ||
+		handle.failureKind !== undefined ||
+		handle.failureCode !== undefined ||
+		handle.failureRecoverability !== undefined ||
+		handle.failureDisposition !== undefined ||
+		handle.failedToolNodeId !== undefined
+	);
+}
+
 function workflowFailureFields(
 	handle: Partial<DurableWorkflowHandle> | undefined,
 ): Partial<DurableWorkflowFailureMetadata> {
 	if (handle === undefined) return {};
 	return {
 		...(handle.error !== undefined ? { error: handle.error } : {}),
+		...(handle.exited !== undefined ? { exited: handle.exited } : {}),
+		...(handle.exitReason !== undefined ? { exitReason: handle.exitReason } : {}),
 		...(handle.failureKind !== undefined ? { failureKind: handle.failureKind } : {}),
 		...(handle.failureCode !== undefined ? { failureCode: handle.failureCode } : {}),
 		...(handle.failureRecoverability !== undefined ? { failureRecoverability: handle.failureRecoverability } : {}),
@@ -554,6 +588,7 @@ function toResumableEntry(handle: DurableWorkflowHandle): ResumableWorkflowEntry
 		...(handle.resumable !== undefined ? { resumable: handle.resumable } : {}),
 		...workflowFailureFields(handle),
 		...(handle.invocationCwd !== undefined ? { invocationCwd: handle.invocationCwd } : {}),
+		...(handle.origin !== undefined ? { origin: handle.origin } : {}),
 		...(handle.workflowCwd !== undefined ? { workflowCwd: handle.workflowCwd } : {}),
 		...(handle.repositoryRoot !== undefined ? { repositoryRoot: handle.repositoryRoot } : {}),
 		...(handle.gitWorktreeRoot !== undefined ? { gitWorktreeRoot: handle.gitWorktreeRoot } : {}),

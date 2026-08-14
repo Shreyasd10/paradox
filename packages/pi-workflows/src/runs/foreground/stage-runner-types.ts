@@ -1,4 +1,4 @@
-import type { AgentSession, CreateAgentSessionOptions, PromptOptions } from "@bastani/atomic";
+import type { AgentSession, CreateAgentSessionOptions, PromptOptions, SettingsManager } from "@bastani/atomic";
 import type {
 	CompleteStageOpts,
 	StageContext,
@@ -18,9 +18,11 @@ export type WorkflowFastModeSettings = {
 	readonly chat: boolean;
 	readonly workflow: boolean;
 };
+export type WorkflowRetrySettings = ReturnType<SettingsManager["getRetrySettings"]>;
 
 export type WorkflowFastModeSettingsManager = {
 	getCodexFastModeSettings(): WorkflowFastModeSettings;
+	getRetrySettings?(): WorkflowRetrySettings;
 };
 
 export type StageUserMessageDeliveryAction = "prompt" | "steer" | "followUp" | "handled";
@@ -145,6 +147,8 @@ export interface StageRunnerOpts {
 	defaultSessionDir?: string;
 	/** Internal: notifies the executor when an in-flight fallback changes model/fast metadata. */
 	onModelFallbackMetaChange?: (meta: StageModelFallbackMeta) => void;
+	/** Internal: persist stage-session identity once the SDK has created its path. */
+	onSessionReady?: () => void | Promise<void>;
 }
 
 export interface InternalStageContext extends StageContext {

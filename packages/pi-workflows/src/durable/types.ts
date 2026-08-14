@@ -10,6 +10,7 @@
  */
 
 import type {
+	WorkflowActor,
 	WorkflowFailureCode,
 	WorkflowFailureDisposition,
 	WorkflowFailureKind,
@@ -40,6 +41,8 @@ export interface DurableWorkflowHandle {
 	readonly status: DurableWorkflowStatus;
 	/** Original invocation cwd used to resolve repo-relative workflow defaults on resume. */
 	readonly invocationCwd?: string;
+	/** Who launched this workflow, when the launcher was attributable. */
+	readonly origin?: WorkflowActor;
 	/** Resolved workflow cwd when an input-bound reusable worktree was set up. */
 	readonly workflowCwd?: string;
 	/** Invoking repository root used for reusable worktree validation. */
@@ -58,6 +61,10 @@ export interface DurableWorkflowHandle {
 	readonly rootWorkflowId?: string;
 	/** Explicit resumability flag for failed/blocked runs. */
 	readonly resumable?: boolean;
+	/** True when the terminal status came from an author-selected ctx.exit(). */
+	readonly exited?: boolean;
+	/** Author-supplied reason from ctx.exit(), when present. */
+	readonly exitReason?: string;
 	readonly error?: string;
 	readonly failureKind?: WorkflowFailureKind;
 	readonly failureCode?: WorkflowFailureCode;
@@ -275,7 +282,12 @@ export interface DurableWorkflowMetadata {
 	readonly failedToolNodeId?: string;
 	readonly rootWorkflowId?: string;
 	readonly resumable?: boolean;
+	/** True when the terminal status came from an author-selected ctx.exit(). */
+	readonly exited?: boolean;
+	/** Author-supplied reason from ctx.exit(), when present. */
+	readonly exitReason?: string;
 	readonly invocationCwd?: string;
+	readonly origin?: WorkflowActor;
 	readonly workflowCwd?: string;
 	readonly repositoryRoot?: string;
 	readonly gitWorktreeRoot?: string;
@@ -300,7 +312,12 @@ export interface ResumableWorkflowEntry {
 	readonly failedToolNodeId?: string;
 	readonly rootWorkflowId?: string;
 	readonly resumable?: boolean;
+	/** True when the terminal status came from an author-selected ctx.exit(). */
+	readonly exited?: boolean;
+	/** Author-supplied reason from ctx.exit(), when present. */
+	readonly exitReason?: string;
 	readonly invocationCwd?: string;
+	readonly origin?: WorkflowActor;
 	readonly workflowCwd?: string;
 	readonly repositoryRoot?: string;
 	readonly gitWorktreeRoot?: string;
@@ -309,7 +326,11 @@ export interface ResumableWorkflowEntry {
 }
 
 export interface DurableWorkflowFailureMetadata {
-	readonly error: string;
+	readonly error?: string;
+	/** True when the terminal status came from an author-selected ctx.exit(). */
+	readonly exited?: boolean;
+	/** Author-supplied reason from ctx.exit(), when present. */
+	readonly exitReason?: string;
 	readonly failureKind?: WorkflowFailureKind;
 	readonly failureCode?: WorkflowFailureCode;
 	readonly failureRecoverability?: WorkflowFailureRecoverability;

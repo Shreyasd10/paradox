@@ -1,5 +1,6 @@
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { inspectRun } from "../runs/background/status.js";
+import { store } from "../shared/store.js";
 import type { WorkflowExecutionPolicy } from "../shared/types.js";
 import type { PiExecuteContext, WorkflowToolArgs } from "./public-types.js";
 import type { WorkflowToolResult } from "./render-result.js";
@@ -7,7 +8,7 @@ import type { ExtensionRuntime } from "./runtime.js";
 import { formatWorkflowResourceLoadWarning } from "./workflow-command-surfaces.js";
 import { workflowPolicyFromContext } from "./workflow-policy.js";
 import type { WorkflowReloadReport } from "./workflow-reload-report.js";
-import { buildWorkflowStatusListing } from "./workflow-status-summary.js";
+import { buildWorkflowStatusListing, setWorkflowStatusRenderRuns } from "./workflow-status-summary.js";
 import { isWorkflowStageToolContext, resolveRunId, topLevelExpandedSnapshots } from "./workflow-targets.js";
 import { workflowGetResult } from "./workflow-tool-content.js";
 import {
@@ -17,8 +18,48 @@ import {
 	workflowReloadAction,
 	workflowResumeAction,
 } from "./workflow-tool-control.js";
-import { workflowStageResult, workflowStagesResult, workflowTranscriptResult } from "./workflow-tool-inspection.js";
+import {
+	type WorkflowInspectionSource,
+	workflowStageResult,
+	workflowStagesResult,
+	workflowTranscriptResult,
+} from "./workflow-tool-inspection.js";
 import { type WorkflowSendDeps, workflowSendAction } from "./workflow-tool-send.js";
+
+type DurableInspectionSourceResolution =
+	| { readonly kind: "local" }
+	| { readonly kind: "durable"; readonly source: WorkflowInspectionSource }
+	| { readonly kind: "error"; readonly message: string };
+
+async function resolveDurableInspectionSource(
+	args: WorkflowToolArgs,
+	runtime: ExtensionRuntime,
+): Promise<DurableInspectionSourceResolution> {
+	const target = args.runId?.trim();
+	if (args.all === true || target === undefined || target.length === 0 || target === "--all") return { kind: "local" };
+	const local = resolveRunId(target);
+	if (local.kind !== "not_found") return { kind: "local" };
+	const durable = await runtime.inspectDurableWorkflow(target);
+	if (durable.kind !== "found") return { kind: "error", message: durable.message };
+	return { kind: "durable", source: { store: durable.store, allowLiveHandles: false } };
+}
+
+function durableInspectionError(
+	action: "stages" | "stage" | "transcript",
+	runId: string,
+	message: string,
+): WorkflowToolResult {
+	if (action === "stages") return { action, runId, filter: "all", stages: [], error: message };
+	if (action === "stage") return { action, runId, error: message };
+	return {
+		action,
+		runId,
+		stageId: "",
+		source: "error",
+		entries: [{ role: "notice", text: message }],
+		truncated: false,
+	};
+}
 
 export function makeExecuteWorkflowTool(
 	runtime: ExtensionRuntime | ((ctx: PiExecuteContext) => ExtensionRuntime),
@@ -74,7 +115,9 @@ export function makeExecuteWorkflowTool(
 			}
 			case "run": {
 				await ensureWorkflowResourcesVisible();
-				return getRuntime().dispatch(args, { policy });
+				// A tool launch is the agent's own action: it is attributed as such and
+				// the tool result already reports the run, so it raises no chat notice.
+				return getRuntime().dispatch(args, { policy, origin: "agent" });
 			}
 			case "status": {
 				const target = args.runId;
@@ -84,7 +127,10 @@ export function makeExecuteWorkflowTool(
 						return { action: "statusDetail", runId: target, error: resolved.message };
 					}
 					if (resolved.kind === "not_found") {
-						return { action: "statusDetail", runId: target, error: `run not found: ${target}` };
+						const durable = await getRuntime().inspectDurableWorkflow(target);
+						return durable.kind === "found"
+							? { action: "statusDetail", runId: target, detail: durable.detail }
+							: { action: "statusDetail", runId: target, error: durable.message };
 					}
 					const result = inspectRun(resolved.runId);
 					return result.ok
@@ -92,19 +138,25 @@ export function makeExecuteWorkflowTool(
 						: { action: "statusDetail", runId: target, error: `run not found: ${target}` };
 				}
 				const listing = buildWorkflowStatusListing(topLevelExpandedSnapshots(), args.statusFilter ?? "all");
-				return {
-					action: "status",
+				const result = {
+					action: "status" as const,
 					filter: listing.filter,
 					runs: listing.runs,
 					snapshots: listing.snapshots,
 				};
+				setWorkflowStatusRenderRuns(result, store.graphSnapshot().runs);
+				return result;
 			}
 			case "stages":
-				return workflowStagesResult(args);
 			case "stage":
-				return workflowStageResult(args);
-			case "transcript":
-				return workflowTranscriptResult(args);
+			case "transcript": {
+				const resolved = await resolveDurableInspectionSource(args, getRuntime());
+				if (resolved.kind === "error") return durableInspectionError(action, args.runId ?? "", resolved.message);
+				const source = resolved.kind === "durable" ? resolved.source : undefined;
+				if (action === "stages") return workflowStagesResult(args, source);
+				if (action === "stage") return workflowStageResult(args, source);
+				return workflowTranscriptResult(args, source);
+			}
 			case "send":
 				return workflowSendAction(args, sendDeps);
 			case "pause":

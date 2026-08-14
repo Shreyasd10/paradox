@@ -1,3 +1,4 @@
+import type { WorkflowActor } from "../shared/store-types.js";
 import type { WorkflowSerializableValue } from "../shared/types.js";
 import {
 	isWorkflowFailureCode,
@@ -58,6 +59,8 @@ export function encodeMetadata(metadata: DurableWorkflowMetadata): WorkflowSeria
 			...(metadata.label !== undefined ? { label: metadata.label } : {}),
 			...(metadata.rootWorkflowId !== undefined ? { rootWorkflowId: metadata.rootWorkflowId } : {}),
 			...(metadata.resumable !== undefined ? { resumable: metadata.resumable } : {}),
+			...(metadata.exited !== undefined ? { exited: metadata.exited } : {}),
+			...(metadata.exitReason !== undefined ? { exitReason: metadata.exitReason } : {}),
 			...(metadata.error !== undefined ? { error: metadata.error } : {}),
 			...(metadata.failureKind !== undefined ? { failureKind: metadata.failureKind } : {}),
 			...(metadata.failureCode !== undefined ? { failureCode: metadata.failureCode } : {}),
@@ -66,6 +69,7 @@ export function encodeMetadata(metadata: DurableWorkflowMetadata): WorkflowSeria
 				: {}),
 			...(metadata.failureDisposition !== undefined ? { failureDisposition: metadata.failureDisposition } : {}),
 			...(metadata.failedToolNodeId !== undefined ? { failedToolNodeId: metadata.failedToolNodeId } : {}),
+			...(metadata.origin !== undefined ? { origin: metadata.origin } : {}),
 			...(metadata.invocationCwd !== undefined ? { invocationCwd: metadata.invocationCwd } : {}),
 			...(metadata.workflowCwd !== undefined ? { workflowCwd: metadata.workflowCwd } : {}),
 			...(metadata.repositoryRoot !== undefined ? { repositoryRoot: metadata.repositoryRoot } : {}),
@@ -154,6 +158,8 @@ function parseDurableWorkflowMetadata(
 		(metadata.label !== undefined && typeof metadata.label !== "string") ||
 		(metadata.rootWorkflowId !== undefined && typeof metadata.rootWorkflowId !== "string") ||
 		(metadata.resumable !== undefined && typeof metadata.resumable !== "boolean") ||
+		(metadata.exited !== undefined && typeof metadata.exited !== "boolean") ||
+		(metadata.exitReason !== undefined && typeof metadata.exitReason !== "string") ||
 		(metadata.error !== undefined && typeof metadata.error !== "string") ||
 		(metadata.failureKind !== undefined && !isWorkflowFailureKind(metadata.failureKind)) ||
 		(metadata.failureCode !== undefined && !isWorkflowFailureCode(metadata.failureCode)) ||
@@ -167,7 +173,15 @@ function parseDurableWorkflowMetadata(
 		(metadata.gitWorktreeRoot !== undefined && typeof metadata.gitWorktreeRoot !== "string")
 	)
 		return undefined;
-	return metadata as DurableWorkflowMetadata;
+	const { origin, ...metadataWithoutOrigin } = metadata;
+	return {
+		...metadataWithoutOrigin,
+		...(isWorkflowActor(origin) ? { origin } : {}),
+	} as DurableWorkflowMetadata;
+}
+
+function isWorkflowActor(value: WorkflowSerializableValue | undefined): value is WorkflowActor {
+	return value === "user" || value === "agent";
 }
 
 function isDurableWorkflowStatus(value: string): value is DurableWorkflowStatus {

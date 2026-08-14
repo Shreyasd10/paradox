@@ -1,6 +1,7 @@
 import type {
 	PendingPrompt,
 	PromptKind,
+	RunResumeSource,
 	RunSnapshot,
 	RunStatus,
 	StageInputRequest,
@@ -9,6 +10,7 @@ import type {
 	StoreSnapshot,
 	ToolEvent,
 	ToolNodeSnapshot,
+	WorkflowActor,
 	WorkflowChildRunRef,
 	WorkflowFailureCode,
 	WorkflowFailureDisposition,
@@ -33,10 +35,30 @@ export interface RunEndMetadata {
 	readonly exitReason?: string;
 }
 
+export type { RunResumeSource, WorkflowActor } from "./store-types.js";
+
 export interface RunPauseMetadata {
 	readonly resumable?: boolean;
 	readonly exitReason?: string;
+	/** Who paused or quit this run. Omitted for internal engine pauses. */
+	readonly actor?: WorkflowActor;
 }
+
+export interface RunResumeMetadata {
+	/** Who resumed this run. Omitted for internal engine resumes. */
+	readonly actor?: WorkflowActor;
+	/**
+	 * Required so a new call site cannot silently start notifying: every caller
+	 * states its own path, and only `run_control` is user-visible.
+	 */
+	readonly source: RunResumeSource;
+}
+
+/** Attribution for a stage-scoped pause or resume. */
+export interface StageControlMetadata {
+	readonly actor?: WorkflowActor;
+}
+
 export interface RunBlockedMetadata extends RunEndMetadata {
 	readonly failureRecoverability: "recoverable";
 	readonly failedStageId: string;
@@ -95,7 +117,7 @@ export interface Store {
 	 * Records the end of a run.
 	 * Returns `true` if state changed, `false` if the run was not found or
 	 * already in a terminal state (completed | failed | killed | skipped | cancelled | blocked).
-	 * `result` is applied for intentional success/exit statuses (completed | skipped | cancelled | blocked)
+	 * `result` is applied for intentional success/exit statuses (completed | skipped | cancelled | blocked | failed)
 	 * and for workflows that intentionally return a failed status with structured outputs.
 	 * `error` is applied for status "failed" | "killed" | "blocked".
 	 */
@@ -214,22 +236,38 @@ export interface Store {
 	recordStageInputRequest(runId: string, stageId: string, request: StageInputRequest): boolean;
 	/** Clear a stage's brokered structured-prompt descriptor. */
 	clearStageInputRequest(runId: string, stageId: string): boolean;
-	/** Mark a stage as `paused` and record `pausedAt`. */
-	recordStagePaused(runId: string, stageId: string, pausedAt?: number): boolean;
-	/** Clear `paused`/`blocked` state on a stage and record `resumedAt`. */
-	recordStageResumed(runId: string, stageId: string, resumedAt?: number): boolean;
+	/**
+	 * Mark a stage as `paused` and record `pausedAt`. Metadata on an already-paused
+	 * stage records attribution alone, so a control path can claim a pause the
+	 * engine already published.
+	 */
+	recordStagePaused(runId: string, stageId: string, pausedAt?: number, metadata?: StageControlMetadata): boolean;
+	/**
+	 * Clear `paused`/`blocked` state on a stage and record `resumedAt`. Metadata on
+	 * an already-running stage records attribution alone.
+	 */
+	recordStageResumed(runId: string, stageId: string, resumedAt?: number, metadata?: StageControlMetadata): boolean;
 	recordStageBlocked(runId: string, stageId: string, blockedBy: string): boolean;
 	recordStageUnblocked(runId: string, stageId: string): boolean;
 	recordStageNotice(runId: string, stageId: string, notice: StageNotice): boolean;
-	/** Mark a run as `paused`. Optional metadata can annotate resumable quit/detach state. */
+	/** Mark a run as `paused`. Optional metadata can annotate resumable quit/detach state and attribution. */
 	recordRunPaused(runId: string, pausedAt?: number, metadata?: RunPauseMetadata): boolean;
-	/** Restore a run from `paused` back to `running`. */
-	recordRunResumed(runId: string, resumedAt?: number): boolean;
+	/**
+	 * Restore a run from `paused` back to `running`.
+	 *
+	 * Metadata states which path resumed the run. A run-control resume records its
+	 * attribution even when an inner engine path already flipped the status, which
+	 * is the normal order: stage control and the acknowledgement pass both resume
+	 * the run before public run control returns.
+	 */
+	recordRunResumed(runId: string, resumedAt?: number, metadata?: RunResumeMetadata): boolean;
 	/** Drop every run and notice. */
 	clear(): void;
 	snapshot(): StoreSnapshot;
 	/**
-	 * Return one immutable payload-free graph projection per store version.
+	 * Return one immutable payload-bounded graph projection per store version.
+	 * Authored failed-exit results may retain bounded JSON output values; all
+	 * other run payloads stay omitted or compacted to bounded diagnostic fields.
 	 * Graph-visible state may change only through a version-bumping store method;
 	 * direct mutation of values returned by `runs()` would leave this cache stale.
 	 */

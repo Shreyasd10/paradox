@@ -27,7 +27,6 @@ import type {
 	PiKeybindings,
 	PiOverlayHandle,
 	PiOverlayOptions,
-	PiRemoteTerminalControl,
 	PiTheme,
 } from "../extension/wiring.js";
 import type { StageControlRegistry } from "../runs/foreground/stage-control-registry.js";
@@ -39,7 +38,7 @@ import type { StoreSnapshot } from "../shared/store-types.js";
 import { ensureAtomicThemeInitialized } from "./atomic-theme.js";
 import { deriveGraphThemeFromPiTheme } from "./graph-theme.js";
 import type { OverlayTerminalOutput } from "./overlay-terminal-modes.js";
-import { remoteTerminalControlFrom, setMouseScrollTracking, setTerminalAutowrap } from "./overlay-terminal-modes.js";
+import { remoteTerminalControlFrom, setTerminalAutowrap } from "./overlay-terminal-modes.js";
 import { WorkflowAttachPane } from "./workflow-attach-pane.js";
 import type { PostMortemHandleResolution } from "./workflow-attach-pane-types.js";
 import { WORKFLOW_STATUS_KEY } from "./workflow-status.js";
@@ -82,24 +81,8 @@ export interface GraphOverlayPort {
 }
 
 /**
- * Aspirational full-screen overlay geometry. In a future host that
- * forwards `overlayOptions` to pi-tui's `resolveOverlayLayout`,
- * `width`/`maxHeight` would expand against terminal dimensions so the
- * popup fills the entire frame, with `margin: 0` removing the breathing
- * room a centered popup needs.
- *
- * Current pi interactive `ExtensionUiController.custom` ignores
- * this object: it always mounts overlays with `{ anchor:
- * "bottom-center", width: "100%", maxHeight: "100%", margin: 0 }`. The
- * value is retained for `onHandle`-based toggle support and forward
- * compatibility — see `PiCustomOverlayOptions` for the host-compat
- * note.
- *
- * Note: percent geometry is necessary but not sufficient for a true
- * full-screen overlay — pi-tui positions the popup based on the
- * rendered overlay line count, so the mounted component must also
- * emit `terminal.rows` lines per frame. That row count is threaded
- * through `WorkflowAttachPane.getViewportRows` below.
+ * Full-screen overlay geometry. The host TUI owns terminal dimensions and
+ * the graph layout consumes them while rendering its ScrollView frame.
  */
 const FULLSCREEN_OVERLAY_OPTIONS: PiOverlayOptions = {
 	anchor: "center",
@@ -148,14 +131,12 @@ export function buildGraphOverlayAdapter(
 			process.stdout.write(data);
 		},
 	};
-	// Isolated interactive mode exposes a remote terminal-control capability;
-	// prefer it so the real host TTY (not the child's non-TTY JSONL stdout) gets
-	// the modes. Otherwise fall back to the local process.stdout seam.
-	let remoteTerminalControl: PiRemoteTerminalControl | null = null;
-	const updateMouseScrollTracking = (enabled: boolean): void => {
-		if (remoteTerminalControl) remoteTerminalControl.setMouseScrollTracking(enabled);
-		else setMouseScrollTracking(enabled, terminalOutput);
-	};
+	// Isolated interactive mode exposes a remote autowrap capability; prefer it
+	// so the real host TTY (not the child's non-TTY JSONL stdout) gets the mode.
+	// Otherwise fall back to the local process.stdout seam, except when the
+	// host's fullscreen renderer already owns autowrap.
+	let remoteTerminalControl: { setAutowrap(enabled: boolean): void } | null = null;
+	let localTerminalModesSuppressed = false;
 	let currentView: WorkflowAttachPane | null = null;
 	// pi-tui returns an OverlayHandle via `options.onHandle`. We hold onto
 	// it so toggle() can flip `setHidden` rather than remounting the
@@ -181,7 +162,7 @@ export function buildGraphOverlayAdapter(
 			if (terminalOutput.platform === "win32") remoteTerminalControl.setAutowrap(!visible);
 			return;
 		}
-		setTerminalAutowrap(!visible, terminalOutput);
+		if (!localTerminalModesSuppressed) setTerminalAutowrap(!visible, terminalOutput);
 	}
 
 	function readHostCustomUiActive(ui: OverlayUISurface | undefined = observedUi): boolean {
@@ -219,7 +200,6 @@ export function buildGraphOverlayAdapter(
 	}
 
 	function close(): void {
-		updateMouseScrollTracking(false);
 		currentHandle?.hide();
 		updateTerminalAutowrap(false);
 		finishMounted?.();
@@ -230,6 +210,7 @@ export function buildGraphOverlayAdapter(
 		currentView = null;
 		mounted = false;
 		remoteTerminalControl = null;
+		localTerminalModesSuppressed = false;
 		requestMountedRender = null;
 		clearHostCustomUiObservation();
 	}
@@ -250,7 +231,6 @@ export function buildGraphOverlayAdapter(
 	 * same mounted overlay can be reopened later.
 	 */
 	function hideMounted(): void {
-		updateMouseScrollTracking(false);
 		observedUi?.setStatus?.(MAIN_CHAT_INPUT_STATUS_KEY, undefined);
 		if (currentHandle) {
 			currentView?.setVisible(false);
@@ -291,14 +271,14 @@ export function buildGraphOverlayAdapter(
 		const unsubscribe = subscribeStoreInvalidation(store, onStoreUpdate);
 		return {
 			render: (width: number) => view.render(width),
-			handleInput: (data: string) => {
+			handleInput: (data: string): boolean => {
 				const consumed = view.handleInput(data);
 				if (consumed) tui.requestRender?.();
+				return consumed === true;
 			},
 			invalidate: () => tui.requestRender?.(),
 			dispose: () => {
 				updateTerminalAutowrap(false);
-				updateMouseScrollTracking(false);
 				remoteTerminalControl = null;
 				requestMountedRender = null;
 				unsubscribe();
@@ -318,7 +298,6 @@ export function buildGraphOverlayAdapter(
 			currentView?.retarget(runId, stageId, stageRunId);
 			currentView?.setVisible(true);
 			updateTerminalAutowrap(true);
-			updateMouseScrollTracking(currentView?.wantsMouseScrollTracking() ?? true);
 			currentHandle.setHidden(false);
 			currentHandle.focus();
 			requestMountedRender?.();
@@ -327,7 +306,6 @@ export function buildGraphOverlayAdapter(
 		if (mounted) {
 			currentView?.retarget(runId, stageId, stageRunId);
 			updateTerminalAutowrap(true);
-			updateMouseScrollTracking(currentView?.wantsMouseScrollTracking() ?? true);
 			// Restore keyboard focus to the visible overlay after retargeting.
 			// pi-tui dispatches key events only to the focused component, so a
 			// mounted-but-visible overlay that is retargeted (e.g. to a stage-scoped
@@ -348,13 +326,15 @@ export function buildGraphOverlayAdapter(
 			keybindings: PiKeybindings,
 			done: (result: undefined) => void,
 		): PiCustomComponent => {
-			// Prefer the host's remote terminal-control capability (isolated mode);
+			// Prefer the host's remote autowrap capability (isolated mode);
 			// stays null for non-isolated hosts, keeping the local process.stdout seam.
+			// In a fullscreen host, pi-tui already enabled and owns autowrap; the
+			// local fallback must not turn it off on overlay close.
+			localTerminalModesSuppressed = tui.mode === "fullscreen";
 			remoteTerminalControl = remoteTerminalControlFrom(tui);
 			const finish = (): void => {
 				if (settled) return;
 				settled = true;
-				updateMouseScrollTracking(false);
 				observedUi?.setStatus?.(MAIN_CHAT_INPUT_STATUS_KEY, undefined);
 				currentView?.dispose();
 				currentView = null;
@@ -368,6 +348,7 @@ export function buildGraphOverlayAdapter(
 				} finally {
 					updateTerminalAutowrap(false);
 					remoteTerminalControl = null;
+					localTerminalModesSuppressed = false;
 				}
 			};
 			const view = new WorkflowAttachPane({
@@ -389,12 +370,6 @@ export function buildGraphOverlayAdapter(
 				getToolsExpanded: ui?.getToolsExpanded,
 				setToolsExpanded: ui?.setToolsExpanded,
 				footerData: ui?.getFooterDataProvider?.(),
-				// Pi-tui owns terminal dimensions; thread its row count down
-				// so the overlay frame fills the actual viewport rather than
-				// a hard-coded 32-row rectangle. Returning `undefined` keeps
-				// the existing fallback for hosts that don't expose
-				// `tui.terminal`.
-				getViewportRows: () => tui.terminal?.rows,
 				// Drive the graph-view animation tick. Short-circuit when the
 				// overlay is hidden so a `setHidden(true)`-ed overlay does
 				// not waste CPU on render passes the user can't see. The
@@ -419,7 +394,6 @@ export function buildGraphOverlayAdapter(
 					if (currentHandle?.isFocused() === true) return;
 					currentHandle?.focus();
 				},
-				setMouseScrollTracking: updateMouseScrollTracking,
 				now: buildOpts.now,
 			} as ConstructorParameters<typeof WorkflowAttachPane>[0] & {
 				piTui?: PiCustomOverlayFactoryTui;
@@ -430,7 +404,6 @@ export function buildGraphOverlayAdapter(
 			finishMounted = finish;
 			mounted = true;
 			updateTerminalAutowrap(true);
-			updateMouseScrollTracking(view.wantsMouseScrollTracking());
 			updateMainChatInputHint(readHostCustomUiActive(ui));
 			return makeComponent(view, tui);
 		};
@@ -442,6 +415,7 @@ export function buildGraphOverlayAdapter(
 			// Ctrl+C (Skip / Close / cancel), so the host must forward it here
 			// instead of closing this overlay on the first press.
 			handlesCtrlC: true,
+			handlesInternalUiAction: true,
 			overlayOptions: FULLSCREEN_OVERLAY_OPTIONS,
 			onHandle: (handle) => {
 				currentHandle = handle;
@@ -459,7 +433,6 @@ export function buildGraphOverlayAdapter(
 			const nowHidden = !currentHandle.isHidden();
 			currentView?.setVisible(!nowHidden);
 			if (!nowHidden) updateTerminalAutowrap(true);
-			updateMouseScrollTracking(nowHidden ? false : (currentView?.wantsMouseScrollTracking() ?? true));
 			currentHandle.setHidden(nowHidden);
 			if (nowHidden) updateTerminalAutowrap(false);
 			else {
