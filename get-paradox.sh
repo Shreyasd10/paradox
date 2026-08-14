@@ -136,6 +136,47 @@ github_curl() {
   curl "${args[@]}" "$url" -o "$out"
 }
 
+# GitHub archives omit submodule content; fetch each submodule's default
+# branch archive and unpack it at its path so install_pi_extras.sh finds the
+# real package. Git clones pin the exact commit via `git submodule` instead.
+fetch_submodules() {
+  local dest="$1"
+  [[ -f "$dest/.gitmodules" ]] || return 0
+  local modules_file="$dest/.gitmodules" sub_path sub_url
+  while IFS='|' read -r sub_path sub_url; do
+    [[ -n "$sub_path" && -n "$sub_url" ]] || continue
+    local repo="${sub_url#https://github.com/}"
+    repo="${repo%.git}"
+    local sub_tmp sub_archive branch sub_extract sub_root
+    sub_tmp="$(mktemp -d "${TMPDIR:-/tmp}/paradox-submodule.XXXXXX")"
+    sub_archive="$sub_tmp/sub.tgz"
+    local fetched=0
+    for branch in main master; do
+      if github_curl "https://github.com/$repo/archive/refs/heads/$branch.tar.gz" "$sub_archive" 2>/dev/null; then
+        fetched=1
+        break
+      fi
+    done
+    if ((fetched != 1)); then
+      echo "  WARN: could not fetch submodule $sub_path" >&2
+      rm -rf "$sub_tmp"
+      continue
+    fi
+    sub_extract="$sub_tmp/extract"
+    mkdir -p "$sub_extract"
+    tar -xzf "$sub_archive" -C "$sub_extract"
+    sub_root="$(find "$sub_extract" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if [[ -n "$sub_root" ]]; then
+      mkdir -p "$dest/$sub_path"
+      cp -a "$sub_root/." "$dest/$sub_path/"
+      echo "  submodule $sub_path ($repo@$branch)"
+    else
+      echo "  WARN: submodule $sub_path archive empty" >&2
+    fi
+    rm -rf "$sub_tmp"
+  done < <(awk -F' = ' '/^[[:space:]]*path[[:space:]]*=/{p=$2} /^[[:space:]]*url[[:space:]]*=/{print p "|" $2}' "$modules_file")
+}
+
 fetch_package() {
   local dest="$1"
   local tmp archive extracted url_branch url_tag
@@ -162,6 +203,7 @@ fetch_package() {
   mkdir -p "$(dirname -- "$dest")"
   mv -- "$extracted" "$dest"
   rm -rf "$tmp"
+  fetch_submodules "$dest"
   printf 'Package ready at %s\n' "$dest"
 }
 

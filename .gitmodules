@@ -1,0 +1,3 @@
+[submodule "packages/pi-workflows"]
+	path = packages/pi-workflows
+	url = https://github.com/Shreyasd10/pi-workflows.git

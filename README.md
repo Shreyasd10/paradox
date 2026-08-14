@@ -33,6 +33,13 @@ The one-liner downloads the package into `~/.local/share/paradox/current`
 (no manual clone), then walks through extras / agentmemory prompts — or runs
 non-interactively with `--yes` (macOS) or flags (Windows).
 
+`packages/pi-workflows` is a git submodule of
+[github.com/Shreyasd10/pi-workflows](https://github.com/Shreyasd10/pi-workflows)
+(no drift — one source of truth). Git clones get the pinned commit with
+`git clone --recursive` (or `git submodule update --init`). The one-liner
+downloaders fetch its current `main` archive automatically, since GitHub
+archives omit submodule content.
+
 ## Update
 
 Re-run the same install command. If Paradox is already installed, the installer

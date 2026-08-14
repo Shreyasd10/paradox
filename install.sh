@@ -27,7 +27,7 @@ Options:
   --dry-run             Print planned changes without modifying the filesystem.
   --verify              Install, then verify the ownership manifest.
   --uninstall           Remove only unchanged entries listed in the ownership manifest.
-  --no-extensions       Skip npm extensions and the vendored packages (pi-task,
+  --no-extensions       Skip npm extensions and the bundled packages (pi-task,
                         pi-grok-style-tools, pi-workflows).
   --no-lean-ctx         Skip LeanCTX binary install and pi-lean-ctx routing.
   --with-agentmemory    Install/connect agentmemory for pi.

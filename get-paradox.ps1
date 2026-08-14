@@ -63,6 +63,52 @@ function Resolve-Root {
   return Fetch-Package
 }
 
+# GitHub archives omit submodule content; fetch each submodule's default
+# branch archive and unpack it at its path. Git clones pin the exact commit
+# via `git submodule` instead.
+function Expand-Submodules {
+  param([string]$Root)
+  $gitmodules = Join-Path $Root ".gitmodules"
+  if (-not (Test-Path $gitmodules)) { return }
+  $subPath = $null
+  foreach ($line in Get-Content $gitmodules) {
+    if ($line -match '^\s*path\s*=\s*(.+)$') {
+      $subPath = $Matches[1].Trim()
+    } elseif ($line -match '^\s*url\s*=\s*(.+)$') {
+      if (-not $subPath) { continue }
+      $subUrl = $Matches[1].Trim()
+      $repo = $subUrl -replace '^https://github.com/', '' -replace '\.git$', ''
+      $subDir = Join-Path $Root $subPath
+      $archive = Join-Path $env:TEMP ("submodule-" + [guid]::NewGuid().ToString("N") + ".zip")
+      $fetched = $false
+      foreach ($branch in @("main", "master")) {
+        try {
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$repo/archive/refs/heads/$branch.zip" -OutFile $archive -ErrorAction Stop
+          $fetched = $true
+          break
+        } catch { }
+      }
+      if (-not $fetched) {
+        Write-Warning "could not fetch submodule $subPath"
+      } else {
+        $extract = Join-Path $env:TEMP ("submodule-" + [guid]::NewGuid().ToString("N"))
+        Expand-Archive -Path $archive -DestinationPath $extract -Force
+        $subRoot = Get-ChildItem -Path $extract -Directory | Select-Object -First 1
+        if ($subRoot) {
+          New-Item -ItemType Directory -Force -Path $subDir | Out-Null
+          Copy-Item -Path (Join-Path $subRoot.FullName "*") -Destination $subDir -Recurse -Force
+          Write-Host "  submodule $subPath ($repo@$branch)"
+        } else {
+          Write-Warning "submodule $subPath archive empty"
+        }
+        Remove-Item -Recurse -Force -Path $extract -ErrorAction SilentlyContinue
+        Remove-Item -Force -Path $archive -ErrorAction SilentlyContinue
+      }
+      $subPath = $null
+    }
+  }
+}
+
 function Fetch-Package {
   $current = Join-Path $paradoxHome "current"
   $tmp = Join-Path $env:TEMP ("paradox-fetch-" + [guid]::NewGuid().ToString("N"))
@@ -88,6 +134,7 @@ function Fetch-Package {
   if (Test-Path $current) { Remove-Item -Recurse -Force -Path $current }
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $current) | Out-Null
   Move-Item -Path $root.FullName -Destination $current
+  Expand-Submodules -Root $current
   Remove-Item -Recurse -Force -Path $tmp -ErrorAction SilentlyContinue
   Write-Host "Package ready at $current"
   return [System.IO.Path]::GetFullPath($current)
