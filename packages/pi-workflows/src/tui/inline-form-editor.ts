@@ -3,7 +3,7 @@
  * an inline workflow form is active. Owns ALL keystrokes during fill-out:
  *
  *   tab / shift+tab     — move focus across form fields and the final Submit action
- *   ↑/↓                 — move focus (or caret between logical lines in `text`)
+ *   ↑/↓                 — move through options, then fields (or logical lines in `text`)
  *   ←/→                 — caret nav (text) | choice cycle (select) | flip (bool)
  *   alt/ctrl+←/→        — word movement in text/string/number fields
  *   home/end (ctrl+a/e) — caret to start/end of the current logical line
@@ -60,6 +60,7 @@ import {
 	wordRight,
 } from "./keybindings-adapter.js";
 import { decodePrintableKey, Key, matchesKey } from "./text-helpers.js";
+import { moveOption } from "./option-navigation.js";
 
 export type FormEditorOutcome = "submit" | "cancel";
 
@@ -329,16 +330,27 @@ export class InlineFormEditor implements PiEditorComponent {
 		const i = Math.max(0, choices.indexOf(cur));
 		if (
 			matchesAction(this.kb, data, TUI_ACTION.selectUp) ||
-			matchesAction(this.kb, data, TUI_ACTION.editorCursorLeft)
+			matchesAction(this.kb, data, TUI_ACTION.editorCursorUp)
 		) {
+			const move = moveOption(choices, cur, -1);
+			state.rawText[field.name] = move.value;
+			if (move.focusDelta) this.moveFocus(state, move.focusDelta);
+			return true;
+		}
+		if (matchesAction(this.kb, data, TUI_ACTION.editorCursorLeft)) {
 			state.rawText[field.name] = choices[(i - 1 + choices.length) % choices.length]!;
 			return true;
 		}
 		if (
 			matchesAction(this.kb, data, TUI_ACTION.selectDown) ||
-			matchesAction(this.kb, data, TUI_ACTION.editorCursorRight) ||
-			matchesKey(data, Key.space)
+			matchesAction(this.kb, data, TUI_ACTION.editorCursorDown)
 		) {
+			const move = moveOption(choices, cur, +1);
+			state.rawText[field.name] = move.value;
+			if (move.focusDelta) this.moveFocus(state, move.focusDelta);
+			return true;
+		}
+		if (matchesAction(this.kb, data, TUI_ACTION.editorCursorRight) || matchesKey(data, Key.space)) {
 			state.rawText[field.name] = choices[(i + 1) % choices.length]!;
 			return true;
 		}
@@ -352,8 +364,8 @@ export class InlineFormEditor implements PiEditorComponent {
 		return false;
 	}
 	private handleBoolean(data: string, field: WorkflowInputEntry, state: InlineFormState): boolean {
-		// ↑/↓ move across fields; space / ←/→ flip. Binding selectUp/selectDown to
-		// flip trapped focus on fields like goal.create_pr.
+		// Treat the rendered on/off rows as a bounded list: arrows select the
+		// adjacent value, then leave the field when pressed past either edge.
 		if (
 			matchesKey(data, Key.space) ||
 			matchesAction(this.kb, data, TUI_ACTION.editorCursorLeft) ||
@@ -366,14 +378,18 @@ export class InlineFormEditor implements PiEditorComponent {
 			matchesAction(this.kb, data, TUI_ACTION.selectUp) ||
 			matchesAction(this.kb, data, TUI_ACTION.editorCursorUp)
 		) {
-			this.moveFocus(state, -1);
+			const move = moveOption(["true", "false"], state.rawText[field.name] ?? "false", -1);
+			state.rawText[field.name] = move.value;
+			if (move.focusDelta) this.moveFocus(state, move.focusDelta);
 			return true;
 		}
 		if (
 			matchesAction(this.kb, data, TUI_ACTION.selectDown) ||
 			matchesAction(this.kb, data, TUI_ACTION.editorCursorDown)
 		) {
-			this.moveFocus(state, +1);
+			const move = moveOption(["true", "false"], state.rawText[field.name] ?? "false", +1);
+			state.rawText[field.name] = move.value;
+			if (move.focusDelta) this.moveFocus(state, move.focusDelta);
 			return true;
 		}
 		if (

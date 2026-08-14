@@ -14,6 +14,8 @@ import {
 	resolvePromptResponse,
 	syncPromptState,
 } from "./stage-chat-view-state.js";
+import { copyTextToClipboard } from "./stage-chat-clipboard.js";
+import { lastAssistantText } from "./stage-chat-last-assistant.js";
 import { PROMPT_SCROLL_STEP_ROWS, type StageChatViewContext } from "./stage-chat-view-types.js";
 import { Key, matchesKey } from "./text-helpers.js";
 
@@ -28,10 +30,25 @@ export function handleStageChatInput(ctx: StageChatViewContext, data: string): b
 		ctx.onDetach();
 		return true;
 	}
+	if (matchesKey(data, Key.ctrlShift("c")) || matchesKey(data, Key.shiftCtrl("c"))) {
+		copyLastAssistantFromStageChat(ctx);
+		return true;
+	}
 	if (matchesKey(data, Key.ctrl("t"))) {
 		ctx.mouseScrollCaptureEnabled = !ctx.mouseScrollCaptureEnabled;
+		ctx.copyNotice = null;
 		ctx.requestRender?.();
 		return true;
+	}
+	if (!ctx.mouseScrollCaptureEnabled && matchesKey(data, Key.escape)) {
+		ctx.mouseScrollCaptureEnabled = true;
+		ctx.copyNotice = null;
+		ctx.requestRender?.();
+		return true;
+	}
+	if (ctx.copyNotice) {
+		ctx.copyNotice = null;
+		ctx.requestRender?.();
 	}
 	if (ctx.mountedCustomUi) {
 		return handleMountedCustomUiInput(ctx, data);
@@ -78,6 +95,18 @@ export function handleStageChatInput(ctx: StageChatViewContext, data: string): b
 	if (blocked) return true;
 	return ctx.chatHost.handleInput(data);
 }
+
+function copyLastAssistantFromStageChat(ctx: StageChatViewContext): void {
+	const text = lastAssistantText(ctx.chatHost.entries());
+	if (!text) {
+		ctx.copyNotice = "nothing to copy";
+		ctx.requestRender?.();
+		return;
+	}
+	ctx.copyNotice = copyTextToClipboard(text) ? "copied" : "copy failed";
+	ctx.requestRender?.();
+}
+
 function handleToolsExpandInput(ctx: StageChatViewContext, data: string): boolean {
 	const keybindings = isKeybindingsLike(ctx.piKeybindings) ? ctx.piKeybindings : undefined;
 	if (!matchesAction(keybindings, data, APP_ACTION.toolsExpand)) return false;

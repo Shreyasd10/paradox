@@ -36,13 +36,14 @@ export function registerWorkflowTool(
 			};
 		},
 		renderCall: (args, _theme, _context) => dynamicTextRenderComponent((width) => renderCall(args, { width })),
-		renderResult: (result, opts, _theme, context) => {
+		renderResult: (result, opts, theme, context) => {
 			const capturedNow = Date.now();
 			return dynamicTextRenderComponent((width) =>
 				renderResult(result.details, {
 					...opts,
 					width,
 					now: capturedNow,
+					hostTheme: theme,
 					runInputs: (context as { args?: WorkflowToolArgs }).args?.inputs,
 				}),
 			);

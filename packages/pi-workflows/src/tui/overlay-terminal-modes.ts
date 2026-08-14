@@ -3,7 +3,7 @@
  * reporting and autowrap (DECAWM) escape sequences for the local TTY, plus
  * extraction of the isolated host's remote terminal-control capability.
  *
- * cross-ref: src/tui/overlay-adapter.ts (sole consumer)
+ * cross-ref: src/tui/overlay-adapter.ts, src/tui/stage-chat-view-state.ts
  */
 
 import type { PiCustomOverlayFactoryTui, PiRemoteTerminalControl } from "../extension/wiring.js";
@@ -12,6 +12,23 @@ const MOUSE_SCROLL_TRACKING_ON = "\x1b[?1000h\x1b[?1002h\x1b[?1006h";
 const MOUSE_SCROLL_TRACKING_OFF = "\x1b[?1006l\x1b[?1002l\x1b[?1000l";
 const TERMINAL_AUTOWRAP_ON = "\x1b[?7h";
 const TERMINAL_AUTOWRAP_OFF = "\x1b[?7l";
+
+/** Cursor/VS Code integrated terminals already own mouse selection and copy. */
+export function isEmbeddedIdeTerminal(env: NodeJS.ProcessEnv = process.env): boolean {
+	const program = (env.TERM_PROGRAM ?? "").toLowerCase();
+	return (
+		program === "vscode" ||
+		program === "cursor" ||
+		!!env.VSCODE_INJECTION ||
+		!!env.VSCODE_PID ||
+		!!env.CURSOR_TRACE_ID
+	);
+}
+
+/** Always capture the wheel. Native select in a fullscreen overlay copies chrome and can freeze the IDE selection. */
+export function defaultStageChatMouseScrollCapture(_env?: NodeJS.ProcessEnv): boolean {
+	return true;
+}
 
 export interface OverlayTerminalOutput {
 	platform: NodeJS.Platform;

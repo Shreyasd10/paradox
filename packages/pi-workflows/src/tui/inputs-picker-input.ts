@@ -23,6 +23,7 @@ import {
 	wordRight,
 } from "./keybindings-adapter.js";
 import { decodePrintableKey, Key, matchesKey } from "./text-helpers.js";
+import { moveOption } from "./option-navigation.js";
 
 export function handleInputsPickerInput(
 	key: string,
@@ -197,11 +198,23 @@ function handleSelectKey(
 	if (choices.length === 0) return { kind: "noop" };
 	const current = state.rawText[field.name] ?? choices[0]!;
 	const idx = Math.max(0, choices.indexOf(current));
-	if (matchesAction(kb, key, TUI_ACTION.selectUp) || matchesAction(kb, key, TUI_ACTION.editorCursorLeft)) {
+	if (matchesAction(kb, key, TUI_ACTION.selectUp) || matchesAction(kb, key, TUI_ACTION.editorCursorUp)) {
+		const move = moveOption(choices, current, -1);
+		state.rawText[field.name] = move.value;
+		if (move.focusDelta) moveFocus(state, fields, move.focusDelta);
+		return { kind: "noop" };
+	}
+	if (matchesAction(kb, key, TUI_ACTION.editorCursorLeft)) {
 		state.rawText[field.name] = choices[(idx - 1 + choices.length) % choices.length]!;
 		return { kind: "noop" };
 	}
-	if (matchesAction(kb, key, TUI_ACTION.selectDown) || matchesAction(kb, key, TUI_ACTION.editorCursorRight)) {
+	if (matchesAction(kb, key, TUI_ACTION.selectDown) || matchesAction(kb, key, TUI_ACTION.editorCursorDown)) {
+		const move = moveOption(choices, current, +1);
+		state.rawText[field.name] = move.value;
+		if (move.focusDelta) moveFocus(state, fields, move.focusDelta);
+		return { kind: "noop" };
+	}
+	if (matchesAction(kb, key, TUI_ACTION.editorCursorRight)) {
 		state.rawText[field.name] = choices[(idx + 1) % choices.length]!;
 		return { kind: "noop" };
 	}
@@ -219,8 +232,8 @@ function handleBooleanKey(
 	fields: readonly WorkflowInputEntry[],
 	kb: KeybindingsLike | undefined,
 ): InputsPickerAction {
-	// ↑/↓ move across fields; space / ←/→ flip. Binding selectUp/selectDown to
-	// flip trapped focus on fields like goal.create_pr.
+	// Treat the rendered on/off rows as a bounded list: arrows select the
+	// adjacent value, then leave the field when pressed past either edge.
 	if (
 		matchesKey(key, Key.space) ||
 		matchesAction(kb, key, TUI_ACTION.editorCursorLeft) ||
@@ -230,11 +243,15 @@ function handleBooleanKey(
 		return { kind: "noop" };
 	}
 	if (matchesAction(kb, key, TUI_ACTION.selectUp) || matchesAction(kb, key, TUI_ACTION.editorCursorUp)) {
-		moveFocus(state, fields, -1);
+		const move = moveOption(["true", "false"], state.rawText[field.name] ?? "false", -1);
+		state.rawText[field.name] = move.value;
+		if (move.focusDelta) moveFocus(state, fields, move.focusDelta);
 		return { kind: "noop" };
 	}
 	if (matchesAction(kb, key, TUI_ACTION.selectDown) || matchesAction(kb, key, TUI_ACTION.editorCursorDown)) {
-		moveFocus(state, fields, +1);
+		const move = moveOption(["true", "false"], state.rawText[field.name] ?? "false", +1);
+		state.rawText[field.name] = move.value;
+		if (move.focusDelta) moveFocus(state, fields, move.focusDelta);
 		return { kind: "noop" };
 	}
 	if (matchesAction(kb, key, TUI_ACTION.selectConfirm) || matchesAction(kb, key, TUI_ACTION.inputSubmit)) {

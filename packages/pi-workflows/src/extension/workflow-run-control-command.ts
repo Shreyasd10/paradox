@@ -8,7 +8,7 @@ import { workflowHasPausedStages, workflowHasPausedState } from "../runs/backgro
 import { topLevelWorkflowRuns } from "../shared/run-visibility.js";
 import { store } from "../shared/store.js";
 import { workflowRunResumeCandidate } from "../shared/workflow-artifacts.js";
-import { deriveGraphTheme } from "../tui/graph-theme.js";
+import { deriveGraphThemeFromPiTheme } from "../tui/graph-theme.js";
 import { renderSessionList } from "../tui/session-list.js";
 import { openSessionPicker } from "../tui/session-overlays.js";
 import { openWorkflowResumeSelector } from "../tui/workflow-resume-selector.js";
@@ -55,7 +55,7 @@ export async function handleRunControlCommand(
 	};
 	const confirmationPrompt =
 		policy.allowHumanInput && typeof ctx.ui?.confirm === "function" ? ctx.ui.confirm.bind(ctx.ui) : undefined;
-	const theme = deriveGraphTheme({});
+	const theme = deriveGraphThemeFromPiTheme(ctx.ui?.theme);
 	const failHeadlessAttachCommand = (targetAction: "connect" | "attach", runId: string, stageId?: string): boolean => {
 		if (policy.allowInputPicker) return false;
 		const displayTarget = stageId ? `${runId} stage ${stageId}` : runId;

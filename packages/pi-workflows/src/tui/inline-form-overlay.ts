@@ -25,7 +25,7 @@ import type { ExtensionAPI, PiCommandContext } from "../extension/index.js";
 import type { WorkflowInputEntry } from "../extension/render-result.js";
 import type { PiEditorComponent, PiEditorFactory } from "../extension/wiring.js";
 import type { WorkflowInputValues } from "../shared/types.js";
-import type { GraphTheme } from "./graph-theme.js";
+import { deriveGraphThemeFromPiTheme, type GraphTheme } from "./graph-theme.js";
 import { renderInlineCard } from "./inline-form-card.js";
 import { InlineFormEditor } from "./inline-form-editor.js";
 import { createForm, finalizeForm, getForm } from "./inline-form-store.js";
@@ -69,7 +69,7 @@ interface CardComponent {
 	invalidate?(): void;
 }
 
-type RawRenderer = (payload: unknown) => CardComponent | null | undefined;
+type RawRenderer = (payload: unknown, options?: unknown, theme?: unknown) => CardComponent | null | undefined;
 
 /**
  * Wire the message renderer once per live ExtensionAPI host. pi creates a new
@@ -78,16 +78,14 @@ type RawRenderer = (payload: unknown) => CardComponent | null | undefined;
  * the replacement session and leave emitted workflow form messages without a
  * renderer.
  *
- * Theme is captured at registration. If pi's active theme changes later the
- * renderer continues with the original; acceptable since these cards are
- * mostly historical artefacts.
+ * Theme follows the host Pi theme on each render.
  */
-export function registerInlineFormRenderer(pi: ExtensionAPI, theme: GraphTheme): void {
+export function registerInlineFormRenderer(pi: ExtensionAPI): void {
 	if (rendererRegisteredHosts.has(pi)) return;
 	const register = pi.registerMessageRenderer;
 	if (typeof register !== "function") return;
 
-	const renderer: RawRenderer = (raw) => {
+	const renderer: RawRenderer = (raw, _options, piTheme) => {
 		const message = raw as {
 			content?: string;
 			details?: { formId?: string };
@@ -102,10 +100,8 @@ export function registerInlineFormRenderer(pi: ExtensionAPI, theme: GraphTheme):
 			// /resume rather than showing a stale or "snapshot lost" placeholder.
 			return null;
 		}
+		const theme = deriveGraphThemeFromPiTheme(piTheme);
 		return {
-			// The card is fully reactive: read fresh state on every render call,
-			// not just at construction time. pi's host re-runs render() whenever
-			// `tui.requestRender()` fires — that's our editor's mutation signal.
 			render: (width: number) =>
 				renderInlineCard({
 					width,

@@ -19,6 +19,7 @@ export const PROMPT_SCROLL_STEP_ROWS = 4;
 export const HEADER_ROWS = 2;
 export const SEP_ROWS = 1;
 export const STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL = "ctrl+t";
+export const STAGE_CHAT_COPY_LAST_LABEL = "ctrl+shift+c";
 
 export function isReadOnlyArchiveStatus(status: StageStatus): boolean {
 	return status === "completed" || status === "failed" || status === "skipped";
@@ -152,6 +153,7 @@ export interface StageChatViewContext {
 	promptVisibleRows: number;
 	localPaused: boolean;
 	mouseScrollCaptureEnabled: boolean;
+	copyNotice: string | null;
 	lastObservedStageStatus: StageStatus | undefined;
 	lastObservedRunStatus: RunStatus | undefined;
 	seenNoticeIds: Set<string>;

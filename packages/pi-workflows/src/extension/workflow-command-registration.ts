@@ -4,7 +4,7 @@ import { schemaIsRequired } from "../shared/schema-introspection.js";
 import { store } from "../shared/store.js";
 import type { WorkflowExecutionPolicy } from "../shared/types.js";
 import { emitChatSurface } from "../tui/chat-surface-message.js";
-import { deriveGraphTheme } from "../tui/graph-theme.js";
+import { deriveGraphThemeFromPiTheme } from "../tui/graph-theme.js";
 import { openHostInputsForm } from "../tui/host-input-form.js";
 import { openInlineInputsForm } from "../tui/inline-form-overlay.js";
 import { openInputsPicker } from "../tui/inputs-overlay.js";
@@ -117,7 +117,7 @@ async function workflowSlashHandler(
 			fail(`${inputResult.error}\nAvailable: ${formatAvailableWorkflowNames(deps.runtimeProxy.registry.names())}`);
 			return;
 		}
-		const schemaText = renderInputsSchema(workflowName, inputResult.inputs, { theme: deriveGraphTheme({}) });
+		const schemaText = renderInputsSchema(workflowName, inputResult.inputs, { theme: deriveGraphThemeFromPiTheme(ctx.ui?.theme) });
 		if (policy.mode === "non_interactive") emitWorkflowCommandOutput(pi, schemaText, { command, workflowName });
 		else print(schemaText);
 	};
@@ -222,7 +222,7 @@ async function workflowSlashHandler(
 		);
 		if (fields.length > 0 && (inputTokens.length === 0 || missingRequired)) {
 			pickerWasShown = true;
-			const pickerTheme = deriveGraphTheme({});
+			const pickerTheme = deriveGraphThemeFromPiTheme(ctx.ui?.theme);
 			let pickerResult =
 				typeof ctx.ui?.hostInputForm === "function"
 					? await openHostInputsForm(ctx.ui, { workflowName, fields, prefilled: inputs })

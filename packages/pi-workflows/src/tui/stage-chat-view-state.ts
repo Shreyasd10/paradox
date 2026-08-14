@@ -7,6 +7,7 @@ import { hexToAnsi, RESET } from "./color-utils.js";
 import { createPromptCardState } from "./prompt-card.js";
 import { resolveStageChatViewportRows } from "./stage-chat-layout.js";
 import { hideMountedCustomUi, releaseMountedCustomUi, showCustomUi } from "./stage-chat-view-custom-ui.js";
+import { defaultStageChatMouseScrollCapture } from "./overlay-terminal-modes.js";
 import {
 	invalidateStageChatDeliveryLifecycles,
 	subscribeStageChatDeliveryActivity,
@@ -69,7 +70,8 @@ export function initializeStageChatView(ctx: StageChatViewContext, opts: StageCh
 	ctx.promptMaxScroll = 0;
 	ctx.promptVisibleRows = 0;
 	ctx.localPaused = false;
-	ctx.mouseScrollCaptureEnabled = true;
+	ctx.mouseScrollCaptureEnabled = defaultStageChatMouseScrollCapture();
+	ctx.copyNotice = null;
 	ctx.lastObservedStageStatus = undefined;
 	ctx.lastObservedRunStatus = undefined;
 	ctx.seenNoticeIds = new Set<string>();

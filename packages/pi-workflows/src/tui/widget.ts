@@ -11,10 +11,8 @@
  *      `▾  N background · X ●` in dim+warning.
  *
  * Theme handling:
- *  - The widget always renders against the canonical Catppuccin Mocha
- *    palette (DESIGN.md "Status-Is-Truth"). Pi's runtime PiTheme is
- *    used only as a yes/no signal for ANSI: theme=undefined → plain
- *    text, theme=defined → coloured chrome.
+ *  - When `piTheme` is set, chrome follows the host Pi theme (Oscura,
+ *    GrokNight, etc.). Undefined → plain text for tests/headless.
  *
  * cross-ref:
  *  - github.com/nicobailon/pi-subagents src/tui/render.ts buildWidgetLines
@@ -29,7 +27,7 @@ import type { FlatBandBadge } from "./chat-surface.js";
 import { renderRoundedBoxLines } from "./chat-surface.js";
 import { hexToAnsi, RESET } from "./color-utils.js";
 import type { GraphTheme } from "./graph-theme.js";
-import { deriveGraphTheme } from "./graph-theme.js";
+import { deriveGraphThemeFromPiTheme } from "./graph-theme.js";
 import { renderRunIdentityRows } from "./run-identity-rows.js";
 import { statusIcon } from "./status-helpers.js";
 import type { PiTheme } from "./store-widget-installer.js";
@@ -367,9 +365,7 @@ function plainCollapsed(counts: RunCounts): string {
  * Returns `[]` when there are no active or recently-ended runs (the
  * widget hides entirely — DESIGN.md "earn every element").
  *
- * `piTheme` is treated as a boolean signal: defined → render ANSI
- * Catppuccin chrome; undefined → render plain text for test/headless
- * consumers.
+ * `piTheme` defined → host-themed ANSI chrome; undefined → plain text.
  */
 export function buildThemedWidgetLines(
 	snap: StoreSnapshot,
@@ -398,7 +394,7 @@ export function buildThemedWidgetLines(
 	};
 
 	const themed = piTheme !== undefined;
-	const graphTheme = deriveGraphTheme({});
+	const graphTheme = deriveGraphThemeFromPiTheme(piTheme);
 
 	// Collapsed single-line form for narrow terminals.
 	if (width < COLLAPSED_BREAKPOINT_COLS) {

@@ -34253,6 +34253,124 @@ function effectiveWidth(width) {
   return chatWidth(width);
 }
 
+// src/tui/graph-theme.ts
+var MOCHA = {
+  crust: "#11111b",
+  mantle: "#181825",
+  base: "#1e1e2e",
+  surface0: "#313244",
+  surface1: "#45475a",
+  surface2: "#585b70",
+  overlay0: "#6c7086",
+  overlay1: "#7f849c",
+  text: "#cdd6f4",
+  subtext0: "#a6adc8",
+  blue: "#89b4fa",
+  green: "#a6e3a1",
+  yellow: "#f9e2af",
+  red: "#f38ba8",
+  mauve: "#cba6f7",
+  sky: "#89dceb"
+};
+function deriveGraphTheme(theme = {}) {
+  return {
+    bg: theme.bg ?? MOCHA.base,
+    backgroundPanel: theme.backgroundPanel ?? MOCHA.surface0,
+    backgroundElement: theme.backgroundElement ?? MOCHA.surface0,
+    surface: theme.surface ?? MOCHA.crust,
+    selection: theme.selection ?? MOCHA.surface1,
+    border: theme.border ?? MOCHA.overlay0,
+    borderDim: theme.borderDim ?? MOCHA.surface2,
+    borderActive: theme.borderActive ?? MOCHA.overlay1,
+    text: theme.text ?? MOCHA.text,
+    textMuted: theme.textMuted ?? MOCHA.subtext0,
+    dim: theme.dim ?? MOCHA.overlay1,
+    accent: theme.accent ?? MOCHA.blue,
+    mauve: theme.mauve ?? MOCHA.mauve,
+    success: theme.success ?? MOCHA.green,
+    warning: theme.warning ?? MOCHA.yellow,
+    info: theme.info ?? MOCHA.sky,
+    error: theme.error ?? MOCHA.red
+  };
+}
+function xterm256ToHex(idx) {
+  if (!Number.isInteger(idx) || idx < 0 || idx > 255) return void 0;
+  if (idx < 16) return void 0;
+  if (idx >= 232) {
+    const level = 8 + (idx - 232) * 10;
+    const hex = level.toString(16).padStart(2, "0");
+    return `#${hex}${hex}${hex}`;
+  }
+  const cube = idx - 16;
+  const steps = [0, 95, 135, 175, 215, 255];
+  const r = steps[Math.floor(cube / 36)];
+  const g = steps[Math.floor(cube % 36 / 6)];
+  const b = steps[cube % 6];
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+function parsePiAnsiToHex(ansi) {
+  if (typeof ansi !== "string" || ansi.length === 0) return void 0;
+  const truecolor = /\x1b\[(?:38|48);2;(\d{1,3});(\d{1,3});(\d{1,3})m/.exec(ansi);
+  if (truecolor) {
+    const r = Math.min(255, Math.max(0, parseInt(truecolor[1], 10)));
+    const g = Math.min(255, Math.max(0, parseInt(truecolor[2], 10)));
+    const b = Math.min(255, Math.max(0, parseInt(truecolor[3], 10)));
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  }
+  const indexed = /\x1b\[(?:38|48);5;(\d{1,3})m/.exec(ansi);
+  if (indexed) {
+    return xterm256ToHex(parseInt(indexed[1], 10));
+  }
+  return void 0;
+}
+function tryPiAccessor(theme, fn, color) {
+  if (typeof fn !== "function") return void 0;
+  try {
+    return fn.call(theme, color);
+  } catch {
+    return void 0;
+  }
+}
+function fgHex(theme, color) {
+  return parsePiAnsiToHex(tryPiAccessor(theme, theme.getFgAnsi, color));
+}
+function bgHex(theme, color) {
+  return parsePiAnsiToHex(tryPiAccessor(theme, theme.getBgAnsi, color));
+}
+function deriveGraphThemeFromPiTheme(theme) {
+  if (!theme || typeof theme !== "object") return deriveGraphTheme({});
+  const t = theme;
+  const accent = fgHex(t, "accent");
+  const page = bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg");
+  const elevated = bgHex(t, "userMessageBg") ?? bgHex(t, "selectedBg") ?? page;
+  const overrides = {
+    bg: page,
+    surface: page,
+    backgroundPanel: elevated,
+    backgroundElement: elevated ?? page,
+    selection: bgHex(t, "selectedBg"),
+    border: fgHex(t, "border"),
+    borderDim: fgHex(t, "borderMuted"),
+    borderActive: fgHex(t, "borderAccent"),
+    text: fgHex(t, "text") ?? fgHex(t, "customMessageText"),
+    textMuted: fgHex(t, "muted"),
+    dim: fgHex(t, "dim"),
+    accent,
+    mauve: fgHex(t, "customMessageLabel") ?? accent,
+    success: fgHex(t, "success"),
+    warning: fgHex(t, "warning"),
+    info: fgHex(t, "mdLink") ?? accent,
+    error: fgHex(t, "error")
+  };
+  const cleaned = {};
+  for (const [k, v] of Object.entries(overrides)) {
+    if (typeof v === "string" && v.length > 0) {
+      cleaned[k] = v;
+    }
+  }
+  return deriveGraphTheme(cleaned);
+}
+
 // src/tui/status-helpers.ts
 function statusColor(status, theme) {
   switch (status) {
@@ -35123,15 +35241,15 @@ function effectiveWidth3(width) {
 // src/tui/chat-surface-message.ts
 var CHAT_SURFACE_CUSTOM_TYPE = "workflows:chat-surface";
 var rendererRegisteredHosts = /* @__PURE__ */ new WeakSet();
-function registerChatSurfaceRenderer(pi, theme) {
+function registerChatSurfaceRenderer(pi) {
   if (rendererRegisteredHosts.has(pi)) return;
   const register = pi.registerMessageRenderer;
   if (typeof register !== "function") return;
-  const renderer = (raw) => {
+  const renderer = (raw, _options, piTheme) => {
     const message = raw;
     const payload = message.details;
     if (!payload) return void 0;
-    return makeComponent(payload, theme);
+    return makeComponent(payload, deriveGraphThemeFromPiTheme(piTheme));
   };
   register.call(pi, CHAT_SURFACE_CUSTOM_TYPE, renderer);
   rendererRegisteredHosts.add(pi);
@@ -35249,120 +35367,6 @@ function ensureAtomicThemeInitialized(themeName) {
   if (ensured) return;
   initTheme(themeName);
   ensured = true;
-}
-
-// src/tui/graph-theme.ts
-var MOCHA = {
-  crust: "#11111b",
-  mantle: "#181825",
-  base: "#1e1e2e",
-  surface0: "#313244",
-  surface1: "#45475a",
-  surface2: "#585b70",
-  overlay0: "#6c7086",
-  overlay1: "#7f849c",
-  text: "#cdd6f4",
-  subtext0: "#a6adc8",
-  blue: "#89b4fa",
-  green: "#a6e3a1",
-  yellow: "#f9e2af",
-  red: "#f38ba8",
-  mauve: "#cba6f7",
-  sky: "#89dceb"
-};
-function deriveGraphTheme(theme = {}) {
-  return {
-    bg: theme.bg ?? MOCHA.base,
-    backgroundPanel: theme.backgroundPanel ?? MOCHA.surface0,
-    backgroundElement: theme.backgroundElement ?? MOCHA.surface0,
-    surface: theme.surface ?? MOCHA.crust,
-    selection: theme.selection ?? MOCHA.surface1,
-    border: theme.border ?? MOCHA.overlay0,
-    borderDim: theme.borderDim ?? MOCHA.surface2,
-    borderActive: theme.borderActive ?? MOCHA.overlay1,
-    text: theme.text ?? MOCHA.text,
-    textMuted: theme.textMuted ?? MOCHA.subtext0,
-    dim: theme.dim ?? MOCHA.overlay1,
-    accent: theme.accent ?? MOCHA.blue,
-    mauve: theme.mauve ?? MOCHA.mauve,
-    success: theme.success ?? MOCHA.green,
-    warning: theme.warning ?? MOCHA.yellow,
-    info: theme.info ?? MOCHA.sky,
-    error: theme.error ?? MOCHA.red
-  };
-}
-function xterm256ToHex(idx) {
-  if (!Number.isInteger(idx) || idx < 0 || idx > 255) return void 0;
-  if (idx < 16) return void 0;
-  if (idx >= 232) {
-    const level = 8 + (idx - 232) * 10;
-    const hex = level.toString(16).padStart(2, "0");
-    return `#${hex}${hex}${hex}`;
-  }
-  const cube = idx - 16;
-  const steps = [0, 95, 135, 175, 215, 255];
-  const r = steps[Math.floor(cube / 36)];
-  const g = steps[Math.floor(cube % 36 / 6)];
-  const b = steps[cube % 6];
-  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-}
-function parsePiAnsiToHex(ansi) {
-  if (typeof ansi !== "string" || ansi.length === 0) return void 0;
-  const truecolor = /\x1b\[(?:38|48);2;(\d{1,3});(\d{1,3});(\d{1,3})m/.exec(ansi);
-  if (truecolor) {
-    const r = Math.min(255, Math.max(0, parseInt(truecolor[1], 10)));
-    const g = Math.min(255, Math.max(0, parseInt(truecolor[2], 10)));
-    const b = Math.min(255, Math.max(0, parseInt(truecolor[3], 10)));
-    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-  }
-  const indexed = /\x1b\[(?:38|48);5;(\d{1,3})m/.exec(ansi);
-  if (indexed) {
-    return xterm256ToHex(parseInt(indexed[1], 10));
-  }
-  return void 0;
-}
-function tryPiAccessor(fn, color) {
-  if (typeof fn !== "function") return void 0;
-  try {
-    return fn(color);
-  } catch {
-    return void 0;
-  }
-}
-function fgHex(theme, color) {
-  return parsePiAnsiToHex(tryPiAccessor(theme.getFgAnsi, color));
-}
-function bgHex(theme, color) {
-  return parsePiAnsiToHex(tryPiAccessor(theme.getBgAnsi, color));
-}
-function deriveGraphThemeFromPiTheme(theme) {
-  if (!theme || typeof theme !== "object") return deriveGraphTheme({});
-  const t = theme;
-  const accent = fgHex(t, "accent");
-  const overrides = {
-    backgroundPanel: bgHex(t, "toolPendingBg") ?? bgHex(t, "customMessageBg"),
-    backgroundElement: bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg"),
-    selection: bgHex(t, "selectedBg"),
-    border: fgHex(t, "border"),
-    borderDim: fgHex(t, "borderMuted"),
-    borderActive: fgHex(t, "borderAccent"),
-    text: fgHex(t, "text") ?? fgHex(t, "customMessageText"),
-    textMuted: fgHex(t, "muted"),
-    dim: fgHex(t, "dim"),
-    accent,
-    success: fgHex(t, "success"),
-    warning: fgHex(t, "warning"),
-    info: accent,
-    // Pi has no `info` token — accent is the closest match.
-    error: fgHex(t, "error")
-  };
-  const cleaned = {};
-  for (const [k, v] of Object.entries(overrides)) {
-    if (typeof v === "string" && v.length > 0) {
-      cleaned[k] = v;
-    }
-  }
-  return deriveGraphTheme(cleaned);
 }
 
 // src/tui/header.ts
@@ -35750,6 +35754,15 @@ function deleteRange(text, start, end, caret) {
   return { text: next, caret: nextCaret };
 }
 
+// src/tui/option-navigation.ts
+function moveOption(choices, current, delta) {
+  const index = Math.max(0, choices.indexOf(current));
+  const next = index + delta;
+  if (next < 0) return { value: choices[index] ?? current, focusDelta: -1 };
+  if (next >= choices.length) return { value: choices[index] ?? current, focusDelta: 1 };
+  return { value: choices[next], focusDelta: 0 };
+}
+
 // src/tui/inputs-picker-input.ts
 function handleInputsPickerInput(key2, state2, fields, keybindings) {
   if (fields.length === 0) {
@@ -35892,11 +35905,23 @@ function handleSelectKey(key2, field3, state2, fields, kb) {
   if (choices.length === 0) return { kind: "noop" };
   const current = state2.rawText[field3.name] ?? choices[0];
   const idx = Math.max(0, choices.indexOf(current));
-  if (matchesAction(kb, key2, TUI_ACTION.selectUp) || matchesAction(kb, key2, TUI_ACTION.editorCursorLeft)) {
+  if (matchesAction(kb, key2, TUI_ACTION.selectUp) || matchesAction(kb, key2, TUI_ACTION.editorCursorUp)) {
+    const move = moveOption(choices, current, -1);
+    state2.rawText[field3.name] = move.value;
+    if (move.focusDelta) moveFocus(state2, fields, move.focusDelta);
+    return { kind: "noop" };
+  }
+  if (matchesAction(kb, key2, TUI_ACTION.editorCursorLeft)) {
     state2.rawText[field3.name] = choices[(idx - 1 + choices.length) % choices.length];
     return { kind: "noop" };
   }
-  if (matchesAction(kb, key2, TUI_ACTION.selectDown) || matchesAction(kb, key2, TUI_ACTION.editorCursorRight)) {
+  if (matchesAction(kb, key2, TUI_ACTION.selectDown) || matchesAction(kb, key2, TUI_ACTION.editorCursorDown)) {
+    const move = moveOption(choices, current, 1);
+    state2.rawText[field3.name] = move.value;
+    if (move.focusDelta) moveFocus(state2, fields, move.focusDelta);
+    return { kind: "noop" };
+  }
+  if (matchesAction(kb, key2, TUI_ACTION.editorCursorRight)) {
     state2.rawText[field3.name] = choices[(idx + 1) % choices.length];
     return { kind: "noop" };
   }
@@ -35912,11 +35937,15 @@ function handleBooleanKey(key2, field3, state2, fields, kb) {
     return { kind: "noop" };
   }
   if (matchesAction(kb, key2, TUI_ACTION.selectUp) || matchesAction(kb, key2, TUI_ACTION.editorCursorUp)) {
-    moveFocus(state2, fields, -1);
+    const move = moveOption(["true", "false"], state2.rawText[field3.name] ?? "false", -1);
+    state2.rawText[field3.name] = move.value;
+    if (move.focusDelta) moveFocus(state2, fields, move.focusDelta);
     return { kind: "noop" };
   }
   if (matchesAction(kb, key2, TUI_ACTION.selectDown) || matchesAction(kb, key2, TUI_ACTION.editorCursorDown)) {
-    moveFocus(state2, fields, 1);
+    const move = moveOption(["true", "false"], state2.rawText[field3.name] ?? "false", 1);
+    state2.rawText[field3.name] = move.value;
+    if (move.focusDelta) moveFocus(state2, fields, move.focusDelta);
     return { kind: "noop" };
   }
   if (matchesAction(kb, key2, TUI_ACTION.selectConfirm) || matchesAction(kb, key2, TUI_ACTION.inputSubmit)) {
@@ -36813,11 +36842,23 @@ var InlineFormEditor = class {
     if (choices.length === 0) return false;
     const cur = state2.rawText[field3.name] ?? choices[0];
     const i = Math.max(0, choices.indexOf(cur));
-    if (matchesAction(this.kb, data, TUI_ACTION.selectUp) || matchesAction(this.kb, data, TUI_ACTION.editorCursorLeft)) {
+    if (matchesAction(this.kb, data, TUI_ACTION.selectUp) || matchesAction(this.kb, data, TUI_ACTION.editorCursorUp)) {
+      const move = moveOption(choices, cur, -1);
+      state2.rawText[field3.name] = move.value;
+      if (move.focusDelta) this.moveFocus(state2, move.focusDelta);
+      return true;
+    }
+    if (matchesAction(this.kb, data, TUI_ACTION.editorCursorLeft)) {
       state2.rawText[field3.name] = choices[(i - 1 + choices.length) % choices.length];
       return true;
     }
-    if (matchesAction(this.kb, data, TUI_ACTION.selectDown) || matchesAction(this.kb, data, TUI_ACTION.editorCursorRight) || matchesKey(data, Key.space)) {
+    if (matchesAction(this.kb, data, TUI_ACTION.selectDown) || matchesAction(this.kb, data, TUI_ACTION.editorCursorDown)) {
+      const move = moveOption(choices, cur, 1);
+      state2.rawText[field3.name] = move.value;
+      if (move.focusDelta) this.moveFocus(state2, move.focusDelta);
+      return true;
+    }
+    if (matchesAction(this.kb, data, TUI_ACTION.editorCursorRight) || matchesKey(data, Key.space)) {
       state2.rawText[field3.name] = choices[(i + 1) % choices.length];
       return true;
     }
@@ -36833,11 +36874,15 @@ var InlineFormEditor = class {
       return true;
     }
     if (matchesAction(this.kb, data, TUI_ACTION.selectUp) || matchesAction(this.kb, data, TUI_ACTION.editorCursorUp)) {
-      this.moveFocus(state2, -1);
+      const move = moveOption(["true", "false"], state2.rawText[field3.name] ?? "false", -1);
+      state2.rawText[field3.name] = move.value;
+      if (move.focusDelta) this.moveFocus(state2, move.focusDelta);
       return true;
     }
     if (matchesAction(this.kb, data, TUI_ACTION.selectDown) || matchesAction(this.kb, data, TUI_ACTION.editorCursorDown)) {
-      this.moveFocus(state2, 1);
+      const move = moveOption(["true", "false"], state2.rawText[field3.name] ?? "false", 1);
+      state2.rawText[field3.name] = move.value;
+      if (move.focusDelta) this.moveFocus(state2, move.focusDelta);
       return true;
     }
     if (matchesAction(this.kb, data, TUI_ACTION.selectConfirm) || matchesAction(this.kb, data, TUI_ACTION.inputSubmit)) {
@@ -36985,11 +37030,11 @@ ${cur.slice(caret)}`;
 // src/tui/inline-form-overlay.ts
 var CUSTOM_TYPE = "workflows:input-form";
 var rendererRegisteredHosts2 = /* @__PURE__ */ new WeakSet();
-function registerInlineFormRenderer(pi, theme) {
+function registerInlineFormRenderer(pi) {
   if (rendererRegisteredHosts2.has(pi)) return;
   const register = pi.registerMessageRenderer;
   if (typeof register !== "function") return;
-  const renderer = (raw) => {
+  const renderer = (raw, _options, piTheme) => {
     const message = raw;
     const formId = message.details?.formId;
     if (!formId) return void 0;
@@ -36997,10 +37042,8 @@ function registerInlineFormRenderer(pi, theme) {
     if (!state2) {
       return null;
     }
+    const theme = deriveGraphThemeFromPiTheme(piTheme);
     return {
-      // The card is fully reactive: read fresh state on every render call,
-      // not just at construction time. pi's host re-runs render() whenever
-      // `tui.requestRender()` fires — that's our editor's mutation signal.
       render: (width) => renderInlineCard({
         width,
         state: getForm(formId) ?? state2,
@@ -37354,6 +37397,9 @@ var MOUSE_SCROLL_TRACKING_ON = "\x1B[?1000h\x1B[?1002h\x1B[?1006h";
 var MOUSE_SCROLL_TRACKING_OFF = "\x1B[?1006l\x1B[?1002l\x1B[?1000l";
 var TERMINAL_AUTOWRAP_ON = "\x1B[?7h";
 var TERMINAL_AUTOWRAP_OFF = "\x1B[?7l";
+function defaultStageChatMouseScrollCapture(_env) {
+  return true;
+}
 function setMouseScrollTracking(enabled, output) {
   if (!output.isTTY) return;
   output.write(enabled ? MOUSE_SCROLL_TRACKING_ON : MOUSE_SCROLL_TRACKING_OFF);
@@ -40450,6 +40496,7 @@ var PROMPT_SCROLL_STEP_ROWS = 4;
 var HEADER_ROWS = 2;
 var SEP_ROWS = 1;
 var STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL = "ctrl+t";
+var STAGE_CHAT_COPY_LAST_LABEL = "ctrl+shift+c";
 function isReadOnlyArchiveStatus(status) {
   return status === "completed" || status === "failed" || status === "skipped";
 }
@@ -40542,14 +40589,25 @@ function embedOrchestratorReturnHintInWidget(ctx, widgetLines, width) {
   return lines;
 }
 function mergeOrchestratorReturnHintIntoLine(ctx, line, width, options = {}) {
-  const copyModeState = ctx.mouseScrollCaptureEnabled ? "off" : "on";
-  const fullHint = {
-    plain: `ctrl+x return to graph \xB7 ${STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL} copy mode ${copyModeState}`,
-    styled: paint2("ctrl+x", ctx.theme.text, { bold: true }) + paint2(" return to graph \xB7 ", ctx.theme.textMuted) + paint2(STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL, ctx.theme.text, { bold: true }) + paint2(` copy mode ${copyModeState}`, ctx.theme.textMuted)
+  const copyModeOn = !ctx.mouseScrollCaptureEnabled;
+  const copyLastStyled = paint2(STAGE_CHAT_COPY_LAST_LABEL, ctx.theme.text, { bold: true }) + paint2(" copy last", ctx.theme.textMuted);
+  const noticeHint = ctx.copyNotice ? {
+    plain: ctx.copyNotice,
+    styled: paint2(ctx.copyNotice, ctx.theme.success)
+  } : null;
+  const fullHint = noticeHint ? noticeHint : copyModeOn ? {
+    plain: `esc resume scroll \xB7 ${STAGE_CHAT_COPY_LAST_LABEL} copy last`,
+    styled: paint2("esc", ctx.theme.text, { bold: true }) + paint2(" resume scroll \xB7 ", ctx.theme.textMuted) + copyLastStyled
+  } : {
+    plain: `ctrl+x return to graph \xB7 ${STAGE_CHAT_COPY_LAST_LABEL} copy last \xB7 ${STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL} copy mode`,
+    styled: paint2("ctrl+x", ctx.theme.text, { bold: true }) + paint2(" return to graph \xB7 ", ctx.theme.textMuted) + copyLastStyled + paint2(" \xB7 ", ctx.theme.textMuted) + paint2(STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL, ctx.theme.text, { bold: true }) + paint2(" copy mode", ctx.theme.textMuted)
   };
-  const compactHint = {
-    plain: `ctrl+x graph \xB7 ${STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL} ${copyModeState}`,
-    styled: paint2("ctrl+x", ctx.theme.text, { bold: true }) + paint2(" graph \xB7 ", ctx.theme.textMuted) + paint2(STAGE_CHAT_MOUSE_SCROLL_TOGGLE_LABEL, ctx.theme.text, { bold: true }) + paint2(` ${copyModeState}`, ctx.theme.textMuted)
+  const compactHint = noticeHint ? noticeHint : copyModeOn ? {
+    plain: `esc scroll \xB7 ${STAGE_CHAT_COPY_LAST_LABEL} copy`,
+    styled: paint2("esc", ctx.theme.text, { bold: true }) + paint2(" scroll \xB7 ", ctx.theme.textMuted) + paint2(STAGE_CHAT_COPY_LAST_LABEL, ctx.theme.text, { bold: true }) + paint2(" copy", ctx.theme.textMuted)
+  } : {
+    plain: `ctrl+x graph \xB7 ${STAGE_CHAT_COPY_LAST_LABEL} copy`,
+    styled: paint2("ctrl+x", ctx.theme.text, { bold: true }) + paint2(" graph \xB7 ", ctx.theme.textMuted) + paint2(STAGE_CHAT_COPY_LAST_LABEL, ctx.theme.text, { bold: true }) + paint2(" copy", ctx.theme.textMuted)
   };
   const trailingBorder = options.preserveTrailingBorder === true ? trailingWidgetBorderChar(line) : "";
   const suffixWidth = visibleWidth(trailingBorder);
@@ -41739,7 +41797,8 @@ function initializeStageChatView(ctx, opts) {
   ctx.promptMaxScroll = 0;
   ctx.promptVisibleRows = 0;
   ctx.localPaused = false;
-  ctx.mouseScrollCaptureEnabled = true;
+  ctx.mouseScrollCaptureEnabled = defaultStageChatMouseScrollCapture();
+  ctx.copyNotice = null;
   ctx.lastObservedStageStatus = void 0;
   ctx.lastObservedRunStatus = void 0;
   ctx.seenNoticeIds = /* @__PURE__ */ new Set();
@@ -42142,6 +42201,62 @@ function promptPageSize(ctx) {
   return Math.max(4, viewLineCount(ctx) - HEADER_ROWS - SEP_ROWS - 2);
 }
 
+// src/tui/stage-chat-clipboard.ts
+import { execFileSync } from "node:child_process";
+import { platform } from "node:os";
+var CLIPBOARD_IO = { timeout: 5e3, stdio: ["pipe", "ignore", "ignore"] };
+function copyTextToClipboard(text) {
+  if (text.length === 0) return false;
+  const os2 = platform();
+  try {
+    if (os2 === "darwin") {
+      execFileSync("pbcopy", { input: text, ...CLIPBOARD_IO });
+      return true;
+    }
+    if (os2 === "win32") {
+      execFileSync("clip", { input: text, ...CLIPBOARD_IO });
+      return true;
+    }
+    try {
+      execFileSync("xclip", ["-selection", "clipboard"], { input: text, ...CLIPBOARD_IO });
+      return true;
+    } catch {
+      execFileSync("xsel", ["--clipboard", "--input"], { input: text, ...CLIPBOARD_IO });
+      return true;
+    }
+  } catch {
+    return false;
+  }
+}
+
+// src/tui/stage-chat-last-assistant.ts
+function lastAssistantText(entries) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry == null || typeof entry !== "object") continue;
+    const rec = entry;
+    if (rec.role === "notice" || rec.kind !== "assistant") continue;
+    const text = extractPlainText(rec.message?.content).trim();
+    if (text.length > 0) return text;
+  }
+  return void 0;
+}
+function extractPlainText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts = [];
+  for (const item of content) {
+    if (item == null) continue;
+    if (typeof item === "string") {
+      parts.push(item);
+      continue;
+    }
+    const obj = item;
+    if (typeof obj.text === "string") parts.push(obj.text);
+  }
+  return parts.join("");
+}
+
 // src/tui/stage-chat-view-input.ts
 function handleStageChatInput(ctx, data) {
   if (matchesKey(data, Key.ctrl("x"))) {
@@ -42154,10 +42269,25 @@ function handleStageChatInput(ctx, data) {
     ctx.onDetach();
     return true;
   }
+  if (matchesKey(data, Key.ctrlShift("c")) || matchesKey(data, Key.shiftCtrl("c"))) {
+    copyLastAssistantFromStageChat(ctx);
+    return true;
+  }
   if (matchesKey(data, Key.ctrl("t"))) {
     ctx.mouseScrollCaptureEnabled = !ctx.mouseScrollCaptureEnabled;
+    ctx.copyNotice = null;
     ctx.requestRender?.();
     return true;
+  }
+  if (!ctx.mouseScrollCaptureEnabled && matchesKey(data, Key.escape)) {
+    ctx.mouseScrollCaptureEnabled = true;
+    ctx.copyNotice = null;
+    ctx.requestRender?.();
+    return true;
+  }
+  if (ctx.copyNotice) {
+    ctx.copyNotice = null;
+    ctx.requestRender?.();
   }
   if (ctx.mountedCustomUi) {
     return handleMountedCustomUiInput(ctx, data);
@@ -42200,6 +42330,16 @@ function handleStageChatInput(ctx, data) {
   }
   if (blocked) return true;
   return ctx.chatHost.handleInput(data);
+}
+function copyLastAssistantFromStageChat(ctx) {
+  const text = lastAssistantText(ctx.chatHost.entries());
+  if (!text) {
+    ctx.copyNotice = "nothing to copy";
+    ctx.requestRender?.();
+    return;
+  }
+  ctx.copyNotice = copyTextToClipboard(text) ? "copied" : "copy failed";
+  ctx.requestRender?.();
 }
 function handleToolsExpandInput(ctx, data) {
   const keybindings = isKeybindingsLike(ctx.piKeybindings) ? ctx.piKeybindings : void 0;
@@ -42347,6 +42487,7 @@ var StageChatView = class {
   promptVisibleRows;
   localPaused;
   mouseScrollCaptureEnabled;
+  copyNotice;
   seenNoticeIds;
   _unsubscribeStore;
   _unsubscribeHandle;
@@ -42462,6 +42603,7 @@ var StageChatView = class {
     void this.promptMaxScroll;
     void this.promptVisibleRows;
     void this.mouseScrollCaptureEnabled;
+    void this.copyNotice;
     void this.seenNoticeIds;
     void this._unsubscribeStore;
     void this._unsubscribeHandle;
@@ -43461,7 +43603,7 @@ function buildThemedWidgetLines(snap, piTheme, width = 120, now = Date.now()) {
     awaiting: displayCounts.awaiting
   };
   const themed = piTheme !== void 0;
-  const graphTheme = deriveGraphTheme({});
+  const graphTheme = deriveGraphThemeFromPiTheme(piTheme);
   if (width < COLLAPSED_BREAKPOINT_COLS) {
     return [themed ? themedCollapsed(visibleCounts, graphTheme) : plainCollapsed(visibleCounts)];
   }
@@ -46928,8 +47070,8 @@ var OWNER_CANDIDATES = ["postgres", "nobody", "daemon"];
 function defaultEmbeddedBaseDir() {
   return join2(homedir2(), HOST_CONFIG_DIR_NAME, "postgres");
 }
-async function resolveEmbeddedRunContext(runner = runLocalCommand, euid = process.getuid?.(), platform = process.platform) {
-  if (platform !== "linux" || euid !== 0) {
+async function resolveEmbeddedRunContext(runner = runLocalCommand, euid = process.getuid?.(), platform2 = process.platform) {
+  if (platform2 !== "linux" || euid !== 0) {
     return { baseDir: defaultEmbeddedBaseDir(), runAsOwner: runner };
   }
   for (const name of OWNER_CANDIDATES) {
@@ -47105,8 +47247,8 @@ function hydrateBinaryLibraryLinks(pgCtlPath) {
   }
 }
 async function loadEmbeddedPostgresBinaries() {
-  const platform = process.platform === "win32" ? "windows" : process.platform;
-  const packageName = `@embedded-postgres/${platform}-${process.arch}`;
+  const platform2 = process.platform === "win32" ? "windows" : process.platform;
+  const packageName = `@embedded-postgres/${platform2}-${process.arch}`;
   let binaries;
   try {
     binaries = await import(packageName);
@@ -66433,7 +66575,7 @@ function createStageContext2(opts) {
     executionMode
   };
   const controller = new StageSessionController(opts, meta2, effectiveStageOptions, structuredOutputCapture);
-  let lastAssistantText;
+  let lastAssistantText2;
   let lastFinalizedOutput;
   let lastFinalizedMessageCount;
   let adapterMessages = [];
@@ -66465,16 +66607,16 @@ function createStageContext2(opts) {
           () => adapters.prompt.prompt(promptText, meta2)
         );
         adapterMessages = assistantMessage(rawText2);
-        lastAssistantText = await finalizePromptOutput(
+        lastAssistantText2 = await finalizePromptOutput(
           rawText2,
           outputOptions,
           runtimeCwd(),
           runId,
           adapterMessages
         );
-        lastFinalizedOutput = lastAssistantText;
+        lastFinalizedOutput = lastAssistantText2;
         lastFinalizedMessageCount = controller.currentSession?.messages.length;
-        return lastAssistantText;
+        return lastAssistantText2;
       }
       if (structuredOutputCapture) {
         let nextPrompt = promptText;
@@ -66492,40 +66634,40 @@ function createStageContext2(opts) {
           nextPrompt = formatStructuredOutputCorrectionPrompt(structuredOutputError, correctiveAttempts);
         }
         const rawStructuredText = stringifyStructuredOutputValue(structuredOutputCapture.value);
-        lastAssistantText = await finalizePromptOutput(
+        lastAssistantText2 = await finalizePromptOutput(
           rawStructuredText,
           outputOptions,
           runtimeCwd(),
           runId,
           controller.currentSession?.messages
         );
-        lastFinalizedOutput = lastAssistantText;
+        lastFinalizedOutput = lastAssistantText2;
         lastFinalizedMessageCount = controller.currentSession?.messages.length;
         return structuredOutputCapture.value;
       }
       await controller.promptWithFallback(promptText, sdkOptions);
-      const rawText = controller.lastAssistantText(lastAssistantText) ?? "";
-      lastAssistantText = await finalizePromptOutput(
+      const rawText = controller.lastAssistantText(lastAssistantText2) ?? "";
+      lastAssistantText2 = await finalizePromptOutput(
         rawText,
         outputOptions,
         runtimeCwd(),
         runId,
         controller.currentSession?.messages
       );
-      lastFinalizedOutput = lastAssistantText;
+      lastFinalizedOutput = lastAssistantText2;
       lastFinalizedMessageCount = controller.currentSession?.messages.length;
-      return lastAssistantText;
+      return lastAssistantText2;
     },
     async complete(text, completeOpts) {
       if (adapters.complete) {
         lastFinalizedOutput = void 0;
         lastFinalizedMessageCount = void 0;
-        lastAssistantText = await runCallback2(
+        lastAssistantText2 = await runCallback2(
           { kind: "workflow.stage_adapter", name: `complete:${stageName}`, runId, stageId },
           () => adapters.complete.complete(text, completeOpts, meta2)
         );
-        adapterMessages = assistantMessage(lastAssistantText);
-        return lastAssistantText;
+        adapterMessages = assistantMessage(lastAssistantText2);
+        return lastAssistantText2;
       }
       if (completeOpts?.model !== void 0 || completeOpts?.maxTokens !== void 0 || completeOpts?.fallbackModels !== void 0) {
         throw new Error(
@@ -66535,8 +66677,8 @@ function createStageContext2(opts) {
       await controller.promptWithFallback(text, void 0, "complete");
       lastFinalizedOutput = void 0;
       lastFinalizedMessageCount = void 0;
-      lastAssistantText = controller.lastAssistantText(lastAssistantText) ?? "";
-      return lastAssistantText;
+      lastAssistantText2 = controller.lastAssistantText(lastAssistantText2) ?? "";
+      return lastAssistantText2;
     },
     async sendUserMessage(text, options) {
       await controller.sendUserMessage(text, options);
@@ -66605,10 +66747,10 @@ function createStageContext2(opts) {
       await controller.disposeAll();
     },
     __getLastAssistantText() {
-      return finalizedOutputIsCurrent() ? lastFinalizedOutput : controller.lastAssistantText(lastAssistantText);
+      return finalizedOutputIsCurrent() ? lastFinalizedOutput : controller.lastAssistantText(lastAssistantText2);
     },
     getLastAssistantText() {
-      return finalizedOutputIsCurrent() ? lastFinalizedOutput : controller.lastAssistantText(lastAssistantText);
+      return finalizedOutputIsCurrent() ? lastFinalizedOutput : controller.lastAssistantText(lastAssistantText2);
     },
     async __ensureSession() {
       await controller.ensureSession();
@@ -69538,11 +69680,11 @@ async function createPiSdkAgentSession(options, prepareOptions) {
   };
 }
 async function createTestAgentSession(_options) {
-  let lastAssistantText;
+  let lastAssistantText2;
   const session = {
     async prompt(text) {
-      lastAssistantText = `stub:sdk:${text.slice(0, 120)}`;
-      return lastAssistantText;
+      lastAssistantText2 = `stub:sdk:${text.slice(0, 120)}`;
+      return lastAssistantText2;
     },
     async steer(_text) {
     },
@@ -69598,7 +69740,7 @@ async function createTestAgentSession(_options) {
     dispose() {
     },
     getLastAssistantText() {
-      return lastAssistantText;
+      return lastAssistantText2;
     }
   };
   return { session };
@@ -71035,7 +71177,7 @@ async function handleRunControlCommand(action, rest, ctx, reporter, deps) {
     }
   };
   const confirmationPrompt = policy.allowHumanInput && typeof ctx.ui?.confirm === "function" ? ctx.ui.confirm.bind(ctx.ui) : void 0;
-  const theme = deriveGraphTheme({});
+  const theme = deriveGraphThemeFromPiTheme(ctx.ui?.theme);
   const failHeadlessAttachCommand = (targetAction, runId, stageId) => {
     if (policy.allowInputPicker) return false;
     const displayTarget = stageId ? `${runId} stage ${stageId}` : runId;
@@ -71496,7 +71638,7 @@ async function workflowSlashHandler(args, ctx, pi, deps) {
 Available: ${formatAvailableWorkflowNames(deps.runtimeProxy.registry.names())}`);
       return;
     }
-    const schemaText = renderInputsSchema(workflowName2, inputResult.inputs, { theme: deriveGraphTheme({}) });
+    const schemaText = renderInputsSchema(workflowName2, inputResult.inputs, { theme: deriveGraphThemeFromPiTheme(ctx.ui?.theme) });
     if (policy.mode === "non_interactive") emitWorkflowCommandOutput(pi, schemaText, { command, workflowName: workflowName2 });
     else print(schemaText);
   };
@@ -71586,7 +71728,7 @@ Available: ${formatAvailableWorkflowNames(deps.runtimeProxy.registry.names())}`)
     );
     if (fields.length > 0 && (inputTokens.length === 0 || missingRequired)) {
       pickerWasShown = true;
-      const pickerTheme = deriveGraphTheme({});
+      const pickerTheme = deriveGraphThemeFromPiTheme(ctx.ui?.theme);
       let pickerResult = typeof ctx.ui?.hostInputForm === "function" ? await openHostInputsForm(ctx.ui, { workflowName, fields, prefilled: inputs }) : { kind: "unsupported" };
       if (pickerResult.kind === "unsupported" && typeof ctx.ui?.setEditorComponent === "function") {
         pickerResult = await openInlineInputsForm(pi, ctx, {
@@ -73121,8 +73263,12 @@ function noticeBodyLines(message, width) {
     return wrapTextWithAnsi2(line, width);
   }).map((line) => ` ${line} `);
 }
+function resultTheme(themed, opts) {
+  if (!themed) return void 0;
+  return deriveGraphThemeFromPiTheme(opts?.hostTheme);
+}
 function renderNotice(title, message, opts, themed) {
-  const theme = themed ? deriveGraphTheme({}) : void 0;
+  const theme = resultTheme(themed, opts);
   const width = opts?.width;
   const contentWidth = width && width > 0 ? Math.max(1, width - 4) : void 0;
   return renderRoundedBox({
@@ -73163,14 +73309,14 @@ function renderResult(result, opts) {
     case "list": {
       const r = result;
       return renderWorkflowList(r.items, {
-        theme: themed ? deriveGraphTheme({}) : void 0,
+        theme: resultTheme(themed, opts),
         width: opts?.width
       });
     }
     case "status": {
       const r = result;
       return renderStatusList(r.snapshots, {
-        theme: themed ? deriveGraphTheme({}) : void 0,
+        theme: resultTheme(themed, opts),
         width: opts?.width,
         now: opts?.now
       });
@@ -73182,7 +73328,7 @@ function renderResult(result, opts) {
       }
       const r = result;
       return renderRunDetail(r.detail, {
-        theme: themed ? deriveGraphTheme({}) : void 0,
+        theme: resultTheme(themed, opts),
         width: opts?.width,
         now: opts?.now
       });
@@ -73190,7 +73336,7 @@ function renderResult(result, opts) {
     case "inputs": {
       const r = result;
       return renderInputsSchema(r.name, r.inputs, {
-        theme: themed ? deriveGraphTheme({}) : void 0,
+        theme: resultTheme(themed, opts),
         width: opts?.width
       });
     }
@@ -73228,7 +73374,7 @@ function renderResult(result, opts) {
             workflowName: r.name,
             runId: r.runId,
             inputs: opts?.runInputs ?? {},
-            theme: themed ? deriveGraphTheme({}) : void 0,
+            theme: resultTheme(themed, opts),
             width: opts?.width
           });
         }
@@ -73250,7 +73396,7 @@ function renderResult(result, opts) {
           workflowName: r.name,
           runId: r.runId,
           inputs: opts?.runInputs ?? {},
-          theme: themed ? deriveGraphTheme({}) : void 0,
+          theme: resultTheme(themed, opts),
           width: opts?.width
         });
       }
@@ -73558,13 +73704,14 @@ function registerWorkflowTool(pi, executeWorkflowTool, runWithLifecycleSuppresse
       };
     },
     renderCall: (args, _theme, _context) => dynamicTextRenderComponent((width) => renderCall(args, { width })),
-    renderResult: (result, opts, _theme, context) => {
+    renderResult: (result, opts, theme, context) => {
       const capturedNow = Date.now();
       return dynamicTextRenderComponent(
         (width) => renderResult(result.details, {
           ...opts,
           width,
           now: capturedNow,
+          hostTheme: theme,
           runInputs: context.args?.inputs
         })
       );
@@ -73584,8 +73731,8 @@ function registerWorkflowMessageRenderers(pi) {
     "workflow.run.end",
     (payload) => dynamicTextRenderComponent(() => renderRunSummary(payload))
   );
-  registerInlineFormRenderer(pi, deriveGraphTheme({}));
-  registerChatSurfaceRenderer(pi, deriveGraphTheme({}));
+  registerInlineFormRenderer(pi);
+  registerChatSurfaceRenderer(pi);
 }
 function buildWorkflowOverlay(pi, resolvePostMortemHandle) {
   return buildGraphOverlayAdapter(pi, store, { resolvePostMortemHandle });

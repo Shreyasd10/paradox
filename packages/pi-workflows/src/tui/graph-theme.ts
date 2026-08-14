@@ -197,22 +197,31 @@ function parsePiAnsiToHex(ansi: string | undefined): string | undefined {
  * Pi's `Theme.getFgAnsi` throws when the requested key is missing from
  * the current theme; we want feature detection without surfacing the
  * throw to overlay mount.
+ *
+ * Must be called as a method (`fn.call(theme, color)`). Pi exports a
+ * Proxy singleton whose `getFgAnsi`/`getBgAnsi` close over instance
+ * `Map`s via `this`. Extracting the function and calling it unbound
+ * throws, which we previously swallowed into the Mocha canvas fallback.
  */
-function tryPiAccessor(fn: ((color: string) => string) | undefined, color: string): string | undefined {
+function tryPiAccessor(
+	theme: PiRuntimeTheme,
+	fn: ((color: string) => string) | undefined,
+	color: string,
+): string | undefined {
 	if (typeof fn !== "function") return undefined;
 	try {
-		return fn(color);
+		return fn.call(theme, color);
 	} catch {
 		return undefined;
 	}
 }
 
 function fgHex(theme: PiRuntimeTheme, color: string): string | undefined {
-	return parsePiAnsiToHex(tryPiAccessor(theme.getFgAnsi, color));
+	return parsePiAnsiToHex(tryPiAccessor(theme, theme.getFgAnsi, color));
 }
 
 function bgHex(theme: PiRuntimeTheme, color: string): string | undefined {
-	return parsePiAnsiToHex(tryPiAccessor(theme.getBgAnsi, color));
+	return parsePiAnsiToHex(tryPiAccessor(theme, theme.getBgAnsi, color));
 }
 
 /**
@@ -221,17 +230,15 @@ function bgHex(theme: PiRuntimeTheme, color: string): string | undefined {
  * Mapping rationale (see `node_modules/@bastani/atomic
  * /src/modes/theme/theme.ts` for the canonical Pi token names):
  *
- *  - Strata: Pi has no first-class panel stratum but exposes
- *    `customMessageBg` / `toolPendingBg` / `selectedBg` as restrained
- *    surfaces. We map them to `backgroundElement` / `backgroundPanel`
- *    / `selection` and leave `bg` on the Mocha base so the canvas
- *    stays consistent with the rest of the extension's renderers.
+ *  - Strata: Pi exposes `customMessageBg` (page/surface), `userMessageBg`
+ *    (elevated cards), and `selectedBg`. Canvas `bg` follows the host page
+ *    so Oscura's near-black replaces Mocha's blue `#1e1e2e`; panels use the
+ *    elevated user-message band so cards still read against that canvas.
  *  - Borders: `borderMuted → borderDim`, `border → border`,
  *    `borderAccent → borderActive`. The `dim` Pi token feeds
  *    `GraphTheme.dim`; `muted` feeds `textMuted`.
- *  - Accents / statuses: direct one-to-one. Pi has no `info` token,
- *    so we fall back to `accent` and finally `MOCHA.sky` to keep
- *    DESIGN.md's status palette intact.
+ *  - Accents / statuses: direct one-to-one. `info` prefers `mdLink` (Oscura
+ *    cyan) then `accent` (purple) rather than Mocha sky.
  *
  * Any token that cannot be resolved (host without these accessors,
  * non-truecolor terminal default, or out-of-palette xterm index)
@@ -243,9 +250,13 @@ export function deriveGraphThemeFromPiTheme(theme: unknown): GraphTheme {
 	if (!theme || typeof theme !== "object") return deriveGraphTheme({});
 	const t = theme as PiRuntimeTheme;
 	const accent = fgHex(t, "accent");
+	const page = bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg");
+	const elevated = bgHex(t, "userMessageBg") ?? bgHex(t, "selectedBg") ?? page;
 	const overrides: GenericTheme = {
-		backgroundPanel: bgHex(t, "toolPendingBg") ?? bgHex(t, "customMessageBg"),
-		backgroundElement: bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg"),
+		bg: page,
+		surface: page,
+		backgroundPanel: elevated,
+		backgroundElement: elevated ?? page,
 		selection: bgHex(t, "selectedBg"),
 
 		border: fgHex(t, "border"),
@@ -257,9 +268,10 @@ export function deriveGraphThemeFromPiTheme(theme: unknown): GraphTheme {
 		dim: fgHex(t, "dim"),
 
 		accent,
+		mauve: fgHex(t, "customMessageLabel") ?? accent,
 		success: fgHex(t, "success"),
 		warning: fgHex(t, "warning"),
-		info: accent, // Pi has no `info` token — accent is the closest match.
+		info: fgHex(t, "mdLink") ?? accent,
 		error: fgHex(t, "error"),
 	};
 	// Strip undefined keys so `deriveGraphTheme` falls back to MOCHA for
