@@ -1,0 +1,45 @@
+{
+  "name": "@shreyasdevadiga/i-have-adhd",
+  "version": "0.1.0",
+  "description": "ADHD-friendly output shaping for stock pi. Fork of @bastani/i-have-adhd (which forks github.com/ayghri/i-have-adhd).",
+  "author": "shreyasdevadiga",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "files": [
+    "index.ts",
+    "skills/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "adhd",
+    "output-style"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --import jiti/register test/smoke.ts"
+  },
+  "devDependencies": {
+    "jiti": "^2.7.0"
+  }
+}

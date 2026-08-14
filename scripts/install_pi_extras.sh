@@ -27,6 +27,7 @@ VENDORED_PACKAGES=(
   "pi-task"
   "pi-grok-style-tools"
   "pi-workflows"
+  "i-have-adhd"
 )
 LEAN_CTX_NPM_SPEC="${LEAN_CTX_NPM_SPEC:-lean-ctx-bin@^3.9.3}"
 LEAN_CTX_PI_CONFIG="$HOME/.pi/agent/extensions/pi-lean-ctx/config.json"
