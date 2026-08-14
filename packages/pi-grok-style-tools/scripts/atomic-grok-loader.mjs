@@ -1,10 +1,20 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isAtomicMainUrl, transformMainSource } from "./atomic-grok-transform.mjs";
+import {
+	isAtomicMainUrl,
+	isAtomicWorkflowsGraphUrl,
+	transformGraphThemeSource,
+	transformMainSource,
+} from "./atomic-grok-transform.mjs";
 
 export async function load(url, context, nextLoad) {
 	const result = await nextLoad(url, context);
-	if (!isAtomicMainUrl(url)) return result;
+	const transform = isAtomicMainUrl(url)
+		? transformMainSource
+		: isAtomicWorkflowsGraphUrl(url)
+			? transformGraphThemeSource
+			: null;
+	if (!transform) return result;
 
 	let source = result.source;
 	if (source == null) {
@@ -13,7 +23,7 @@ export async function load(url, context, nextLoad) {
 		source = Buffer.from(source).toString("utf8");
 	}
 
-	const transformed = transformMainSource(source);
+	const transformed = transform(source);
 	return {
 		format: result.format ?? context.format ?? "module",
 		source: transformed.source,

@@ -69,3 +69,106 @@ export function isAtomicMainUrl(url) {
 		return false;
 	}
 }
+
+const PAGE_MARKER = 'const page = bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg")';
+const BOUND_MARKER = "tryPiAccessor(theme, theme.getFgAnsi";
+const PANEL_RE =
+	/(\n[ \t]*)backgroundPanel:\s*bgHex\(t,\s*"toolPendingBg"\)\s*\?\?\s*bgHex\(t,\s*"customMessageBg"\),\s*backgroundElement:\s*bgHex\(t,\s*"customMessageBg"\)\s*\?\?\s*bgHex\(t,\s*"toolPendingBg"\),/;
+
+export function isAtomicWorkflowsGraphUrl(url) {
+	try {
+		const path = decodeURIComponent(new URL(url).pathname);
+		if (!path.includes("/@bastani/atomic/")) return false;
+		return (
+			path.endsWith("/builtin/workflows/src/extension/index.bundle.mjs") ||
+			path.endsWith("/builtin/workflows/src/tui/graph-theme.ts") ||
+			path.endsWith("/builtin/workflows/src/tui/graph-theme.js")
+		);
+	} catch {
+		return false;
+	}
+}
+
+function bindThemeAccessors(source) {
+	if (source.includes(BOUND_MARKER)) return source;
+	if (!/function tryPiAccessor\(fn/.test(source)) return source;
+	let next = source.replace(/function tryPiAccessor\((fn[^,]*), color/, "function tryPiAccessor(theme, $1, color");
+	next = next.replace(
+		/(function tryPiAccessor\([\s\S]*?try\s*\{\s*)return fn\(color\);/,
+		"$1return fn.call(theme, color);",
+	);
+	next = next.replaceAll("tryPiAccessor(theme.getFgAnsi, color)", "tryPiAccessor(theme, theme.getFgAnsi, color)");
+	next = next.replaceAll("tryPiAccessor(theme.getBgAnsi, color)", "tryPiAccessor(theme, theme.getBgAnsi, color)");
+	return next;
+}
+
+function unbindThemeAccessors(source) {
+	if (!source.includes(BOUND_MARKER)) return source;
+	let next = source.replaceAll("tryPiAccessor(theme, theme.getFgAnsi, color)", "tryPiAccessor(theme.getFgAnsi, color)");
+	next = next.replaceAll("tryPiAccessor(theme, theme.getBgAnsi, color)", "tryPiAccessor(theme.getBgAnsi, color)");
+	next = next.replace(/function tryPiAccessor\(theme, (fn[^,]*), color/, "function tryPiAccessor($1, color");
+	next = next.replace(
+		/(function tryPiAccessor\([\s\S]*?try\s*\{\s*)return fn\.call\(theme, color\);/,
+		"$1return fn(color);",
+	);
+	return next;
+}
+
+function mapOscuraCanvas(source) {
+	if (source.includes(PAGE_MARKER)) return source;
+	const withDecls = source.replace(
+		/const accent = fgHex\(t, "accent"\);(\s*)const overrides/,
+		`const accent = fgHex(t, "accent");$1${PAGE_MARKER};$1const elevated = bgHex(t, "userMessageBg") ?? bgHex(t, "selectedBg") ?? page;$1const overrides`,
+	);
+	if (withDecls === source || !PANEL_RE.test(withDecls)) return source;
+	return withDecls.replace(PANEL_RE, (_, ws) => {
+		const indent = ws.match(/[ \t]+$/)?.[0] ?? "    ";
+		return `${ws}bg: page,\n${indent}surface: page,\n${indent}backgroundPanel: elevated,\n${indent}backgroundElement: elevated ?? page,`;
+	});
+}
+
+function unmapOscuraCanvas(source) {
+	if (!source.includes(PAGE_MARKER)) return source;
+	let next = source.replace(
+		/const accent = fgHex\(t, "accent"\);(\s*)const page = bgHex\(t, "customMessageBg"\) \?\? bgHex\(t, "toolPendingBg"\);\1const elevated = bgHex\(t, "userMessageBg"\) \?\? bgHex\(t, "selectedBg"\) \?\? page;\1const overrides/,
+		'const accent = fgHex(t, "accent");$1const overrides',
+	);
+	next = next.replace(
+		/(\n[ \t]*)bg: page,\s*surface: page,\s*backgroundPanel: elevated,\s*backgroundElement: elevated \?\? page,/,
+		(_, ws) => {
+			const indent = ws.match(/[ \t]+$/)?.[0] ?? "    ";
+			return `${ws}backgroundPanel: bgHex(t, "toolPendingBg") ?? bgHex(t, "customMessageBg"),\n${indent}backgroundElement: bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg"),`;
+		},
+	);
+	return next;
+}
+
+/**
+ * Map Atomic's builtin workflow graph canvas onto the live host theme.
+ * Stock Atomic leaves `bg` on Catppuccin Mocha `#1e1e2e`; Pi's pi-workflows
+ * fork uses Oscura `customMessageBg` instead.
+ *
+ * @param {string} source
+ * @returns {{ source: string; status: "patched" | "original" | "unknown" }}
+ */
+export function transformGraphThemeSource(source) {
+	if (!source.includes("function deriveGraphThemeFromPiTheme")) return { source, status: "unknown" };
+	if (source.includes(PAGE_MARKER) && source.includes(BOUND_MARKER)) return { source, status: "patched" };
+	const next = mapOscuraCanvas(bindThemeAccessors(source));
+	if (!next.includes(PAGE_MARKER) || !next.includes(BOUND_MARKER)) return { source, status: "unknown" };
+	return { source: next, status: "original" };
+}
+
+/**
+ * @param {string} source
+ * @returns {{ source: string; status: "patched" | "original" | "unknown" }}
+ */
+export function revertGraphThemeSource(source) {
+	if (!source.includes("function deriveGraphThemeFromPiTheme")) return { source, status: "unknown" };
+	if (!source.includes(PAGE_MARKER) && !source.includes(BOUND_MARKER)) {
+		return { source, status: PANEL_RE.test(source) ? "original" : "unknown" };
+	}
+	const next = unbindThemeAccessors(unmapOscuraCanvas(source));
+	if (next.includes(PAGE_MARKER) || next.includes(BOUND_MARKER)) return { source, status: "unknown" };
+	return { source: next, status: "patched" };
+}

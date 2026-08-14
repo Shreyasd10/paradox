@@ -17,8 +17,10 @@ import { fileURLToPath } from "node:url";
 import {
 	DISABLE_FLAG,
 	revertCliSource,
+	revertGraphThemeSource,
 	revertMainSource,
 	transformCliSource,
+	transformGraphThemeSource,
 	transformMainSource,
 } from "./atomic-grok-transform.mjs";
 
@@ -35,6 +37,16 @@ const atomicRoot = process.env.ATOMIC_PACKAGE_ROOT || join(npmRoot, "@bastani", 
 const packageJson = JSON.parse(readFileSync(join(atomicRoot, "package.json"), "utf8"));
 const mainPath = join(atomicRoot, "dist", "main.js");
 const cliPath = join(atomicRoot, "dist", "cli.js");
+const workflowsBundlePath = join(
+	atomicRoot,
+	"dist",
+	"builtin",
+	"workflows",
+	"src",
+	"extension",
+	"index.bundle.mjs",
+);
+const graphThemePath = join(atomicRoot, "dist", "builtin", "workflows", "src", "tui", "graph-theme.ts");
 const atomicAgentDir = process.env.ATOMIC_CODING_AGENT_DIR || join(homedir(), ".atomic", "agent");
 const settingsPath = join(atomicAgentDir, "settings.json");
 const piThemesDir = process.env.PI_CODING_AGENT_DIR
@@ -221,16 +233,22 @@ if (action === "check") {
 	}
 	const main = distState(mainPath, transformMainSource);
 	const cli = distState(cliPath, transformCliSource);
+	const workflows = distState(workflowsBundlePath, transformGraphThemeSource);
+	const graphTheme = distState(graphThemePath, transformGraphThemeSource);
 	console.log(`Atomic ${packageJson.version} Grok UI patch: active`);
 	console.log(`Durable settings opt-out: ${settingsPath} (interactiveEngineIsolation=false)`);
 	console.log(`Pi theme excludes: ${managedPiThemeExcludes().join(", ")}`);
-	console.log(`Dist best-effort: main=${main} cli=${cli} (runtime wrapper does not need these)`);
+	console.log(
+		`Dist best-effort: main=${main} cli=${cli} workflows=${workflows} graphTheme=${graphTheme} (runtime wrapper does not need these)`,
+	);
 	process.exit(0);
 }
 
 if (action === "apply") {
 	applyDist(mainPath, transformMainSource, "dist/main.js");
 	applyDist(cliPath, transformCliSource, "dist/cli.js");
+	applyDist(workflowsBundlePath, transformGraphThemeSource, "workflows bundle");
+	applyDist(graphThemePath, transformGraphThemeSource, "graph-theme.ts");
 	ensureThemes();
 	ensureSettingsOptOut();
 	console.log(`Atomic ${packageJson.version} Grok UI patch applied`);
@@ -252,5 +270,7 @@ if (themeSources.some((source) => themeStateFor(source) === "linked")) {
 }
 revertDist(cliPath, revertCliSource, "dist/cli.js");
 revertDist(mainPath, revertMainSource, "dist/main.js");
+revertDist(workflowsBundlePath, revertGraphThemeSource, "workflows bundle");
+revertDist(graphThemePath, revertGraphThemeSource, "graph-theme.ts");
 clearSettingsOptOut();
 console.log(`Atomic ${packageJson.version} Grok UI patch rolled back`);

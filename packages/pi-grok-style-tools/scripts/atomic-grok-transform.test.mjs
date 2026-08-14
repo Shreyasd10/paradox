@@ -4,9 +4,12 @@ import {
 	DISABLE_CHECK,
 	DISABLE_DEFAULT,
 	isAtomicMainUrl,
+	isAtomicWorkflowsGraphUrl,
 	revertCliSource,
+	revertGraphThemeSource,
 	revertMainSource,
 	transformCliSource,
+	transformGraphThemeSource,
 	transformMainSource,
 } from "./atomic-grok-transform.mjs";
 
@@ -64,4 +67,60 @@ test("atomic main URL matcher", () => {
 		true,
 	);
 	assert.equal(isAtomicMainUrl("file:///Users/me/.npm-global/lib/node_modules/@bastani/atomic/dist/cli.js"), false);
+});
+
+const bundledGraphTheme = `function tryPiAccessor(fn, color) {
+  if (typeof fn !== "function")
+    return;
+  try {
+    return fn(color);
+  } catch {
+    return;
+  }
+}
+function fgHex(theme, color) {
+  return parsePiAnsiToHex(tryPiAccessor(theme.getFgAnsi, color));
+}
+function bgHex(theme, color) {
+  return parsePiAnsiToHex(tryPiAccessor(theme.getBgAnsi, color));
+}
+function deriveGraphThemeFromPiTheme(theme) {
+  if (!theme || typeof theme !== "object")
+    return deriveGraphTheme({});
+  const t = theme;
+  const accent = fgHex(t, "accent");
+  const overrides = {
+    backgroundPanel: bgHex(t, "toolPendingBg") ?? bgHex(t, "customMessageBg"),
+    backgroundElement: bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg"),
+    selection: bgHex(t, "selectedBg"),
+  };
+  return deriveGraphTheme(cleaned);
+}
+`;
+
+test("graph theme transform binds accessors and maps Oscura canvas bg", () => {
+	const once = transformGraphThemeSource(bundledGraphTheme);
+	assert.equal(once.status, "original");
+	assert.ok(once.source.includes("return fn.call(theme, color);"));
+	assert.ok(once.source.includes("tryPiAccessor(theme, theme.getFgAnsi, color)"));
+	assert.ok(once.source.includes('const page = bgHex(t, "customMessageBg") ?? bgHex(t, "toolPendingBg")'));
+	assert.ok(once.source.includes("bg: page,"));
+	assert.ok(once.source.includes("backgroundPanel: elevated,"));
+	assert.equal(transformGraphThemeSource(once.source).status, "patched");
+	const reverted = revertGraphThemeSource(once.source);
+	assert.equal(reverted.status, "patched");
+	assert.equal(reverted.source, bundledGraphTheme);
+});
+
+test("graph theme URL matcher", () => {
+	assert.equal(
+		isAtomicWorkflowsGraphUrl(
+			"file:///Users/me/.npm-global/lib/node_modules/@bastani/atomic/dist/builtin/workflows/src/extension/index.bundle.mjs",
+		),
+		true,
+	);
+	assert.equal(
+		isAtomicWorkflowsGraphUrl("file:///Users/me/.npm-global/lib/node_modules/@bastani/atomic/dist/main.js"),
+		false,
+	);
 });
