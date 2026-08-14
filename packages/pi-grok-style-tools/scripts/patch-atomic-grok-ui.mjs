@@ -14,6 +14,13 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	DISABLE_FLAG,
+	revertCliSource,
+	revertMainSource,
+	transformCliSource,
+	transformMainSource,
+} from "./atomic-grok-transform.mjs";
 
 const action = process.argv[2] ?? "apply";
 if (!["apply", "check", "rollback"].includes(action)) {
@@ -30,59 +37,44 @@ const mainPath = join(atomicRoot, "dist", "main.js");
 const cliPath = join(atomicRoot, "dist", "cli.js");
 const atomicAgentDir = process.env.ATOMIC_CODING_AGENT_DIR || join(homedir(), ".atomic", "agent");
 const settingsPath = join(atomicAgentDir, "settings.json");
+const piThemesDir = process.env.PI_CODING_AGENT_DIR
+	? join(process.env.PI_CODING_AGENT_DIR, "themes")
+	: join(homedir(), ".pi", "agent", "themes");
 const themeSources = [
 	fileURLToPath(new URL("../theme/grok-dark.json", import.meta.url)),
 	fileURLToPath(new URL("../theme/oscura-midnight.json", import.meta.url)),
 ];
 
-/** @type {{ original: string; patched: string }[]} */
-const mainVariants = [
-	// Atomic ≥0.9.12 (bootstrap env object)
-	{
-		original:
-			'const isolateInteractiveHost = appMode === "interactive" && !isPlainRuntimeMetadataCommand(parsed) && engineEnv.child !== "1";',
-		patched:
-			'const isolateInteractiveHost = appMode === "interactive" && !isPlainRuntimeMetadataCommand(parsed) && engineEnv.child !== "1" && process.env.ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION !== "1";',
-	},
-	// Older Atomic (direct env flag)
-	{
-		original:
-			'const isolateInteractiveHost = appMode === "interactive" && !isPlainRuntimeMetadataCommand(parsed) && process.env.ATOMIC_INTERACTIVE_ENGINE_CHILD !== "1";',
-		patched:
-			'const isolateInteractiveHost = appMode === "interactive" && !isPlainRuntimeMetadataCommand(parsed) && process.env.ATOMIC_INTERACTIVE_ENGINE_CHILD !== "1" && process.env.ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION !== "1";',
-	},
-];
-
-const cliOriginal =
-	'process.env[`${APP_NAME.toUpperCase()}_CODING_AGENT`] = "true";\nprocess.emitWarning = (() => { });';
-const cliPatched =
-	'process.env[`${APP_NAME.toUpperCase()}_CODING_AGENT`] = "true";\nprocess.env.ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION ??= "1";\nprocess.emitWarning = (() => { });';
-
-function mainState() {
-	const content = readFileSync(mainPath, "utf8");
-	for (const variant of mainVariants) {
-		if (content.includes(variant.patched)) return { status: "patched", variant };
-		if (content.includes(variant.original)) return { status: "original", variant };
-	}
-	return { status: "unknown", variant: undefined };
+function distState(path, transform) {
+	if (!existsSync(path)) return "missing";
+	return transform(readFileSync(path, "utf8")).status;
 }
 
-function cliState() {
-	const content = readFileSync(cliPath, "utf8");
-	if (content.includes(cliPatched)) return "patched";
-	if (content.includes(cliOriginal)) return "original";
-	return "unknown";
+function applyDist(path, transform, label) {
+	const current = readFileSync(path, "utf8");
+	const result = transform(current);
+	if (result.status === "original") {
+		writeFileSync(path, result.source);
+		return "patched";
+	}
+	if (result.status === "patched") return "already-patched";
+	console.warn(
+		`[grok-ui] skip ${label} (Atomic ${packageJson.version} shape changed). The ~/.atomic/bin wrapper still disables isolation at runtime.`,
+	);
+	return "skipped";
 }
 
-function replaceOnce(path, from, to, label) {
-	const content = readFileSync(path, "utf8");
-	if (content.includes(to)) return;
-	if (!content.includes(from)) {
-		throw new Error(
-			`${label} does not match Atomic ${packageJson.version}; update the managed patch before continuing`,
-		);
+function revertDist(path, revert, label) {
+	if (!existsSync(path)) return "missing";
+	const current = readFileSync(path, "utf8");
+	const result = revert(current);
+	if (result.status === "patched") {
+		writeFileSync(path, result.source);
+		return "reverted";
 	}
-	writeFileSync(path, content.replace(from, to));
+	if (result.status === "original") return "clean";
+	console.warn(`[grok-ui] skip ${label} rollback (no managed patch marker)`);
+	return "skipped";
 }
 
 function themeTargetFor(source) {
@@ -116,11 +108,21 @@ function ensureThemes() {
 	}
 }
 
+/** Atomic also auto-loads ~/.pi/agent/themes; `-path` drops the Pi copy so names do not collide. */
+function managedPiThemeExcludes() {
+	return themeSources.map((source) => `-${join(piThemesDir, basename(source))}`);
+}
+
+function themeExcludesPresent(settings) {
+	const themes = Array.isArray(settings?.themes) ? settings.themes : [];
+	return managedPiThemeExcludes().every((entry) => themes.includes(entry));
+}
+
 /**
  * Durable opt-out in ~/.atomic/agent/settings.json.
  * Survives `atomic update` (which only replaces npm dist artifacts).
- * Current Atomic still needs the dist patch; future Atomic that reads
- * `interactiveEngineIsolation` will honor this without re-patching.
+ * Current Atomic still needs the runtime wrapper (or dist patch); future Atomic
+ * that reads `interactiveEngineIsolation` will honor this without either.
  */
 function settingsIsolationState() {
 	if (!existsSync(settingsPath)) return { status: "missing", settings: undefined };
@@ -152,8 +154,20 @@ function ensureSettingsOptOut() {
 		);
 	}
 	const settings = current.settings ? { ...current.settings } : {};
-	if (settings.interactiveEngineIsolation === false) return;
-	settings.interactiveEngineIsolation = false;
+	let changed = false;
+	if (settings.interactiveEngineIsolation !== false) {
+		settings.interactiveEngineIsolation = false;
+		changed = true;
+	}
+	const themes = Array.isArray(settings.themes) ? [...settings.themes] : [];
+	for (const entry of managedPiThemeExcludes()) {
+		if (!themes.includes(entry)) {
+			themes.push(entry);
+			changed = true;
+		}
+	}
+	if (!changed) return;
+	settings.themes = themes;
 	mkdirSync(dirname(settingsPath), { recursive: true });
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 }
@@ -165,20 +179,29 @@ function clearSettingsOptOut() {
 			`Refusing to rewrite Atomic settings: ${current.message ?? "invalid interactiveEngineIsolation"} (${settingsPath})`,
 		);
 	}
-	if (!current.settings || !("interactiveEngineIsolation" in current.settings)) return;
+	if (!current.settings) return;
 	const settings = { ...current.settings };
-	delete settings.interactiveEngineIsolation;
+	let changed = false;
+	if ("interactiveEngineIsolation" in settings) {
+		delete settings.interactiveEngineIsolation;
+		changed = true;
+	}
+	if (Array.isArray(settings.themes)) {
+		const managed = new Set(managedPiThemeExcludes());
+		const next = settings.themes.filter((entry) => !managed.has(entry));
+		if (next.length !== settings.themes.length) {
+			if (next.length === 0) delete settings.themes;
+			else settings.themes = next;
+			changed = true;
+		}
+	}
+	if (!changed) return;
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 }
-
-const main = mainState();
-const cli = cliState();
 
 if (action === "check") {
 	const settings = settingsIsolationState();
 	const problems = [];
-	if (main.status !== "patched") problems.push(`main=${main.status}`);
-	if (cli !== "patched") problems.push(`cli=${cli}`);
 	for (const source of themeSources) {
 		const currentThemeState = themeStateFor(source);
 		if (!["linked", "copied"].includes(currentThemeState)) {
@@ -188,26 +211,26 @@ if (action === "check") {
 	if (settings.status !== "opted-out") {
 		problems.push(`settings=${settings.status}${settings.message ? `(${settings.message})` : ""}`);
 	}
+	if (!themeExcludesPresent(settings.settings)) {
+		problems.push("themes=missing-pi-excludes");
+	}
 	if (problems.length > 0) {
 		throw new Error(
 			`Atomic ${packageJson.version} Grok UI patch is not active (${problems.join(", ")})`,
 		);
 	}
+	const main = distState(mainPath, transformMainSource);
+	const cli = distState(cliPath, transformCliSource);
 	console.log(`Atomic ${packageJson.version} Grok UI patch: active`);
 	console.log(`Durable settings opt-out: ${settingsPath} (interactiveEngineIsolation=false)`);
+	console.log(`Pi theme excludes: ${managedPiThemeExcludes().join(", ")}`);
+	console.log(`Dist best-effort: main=${main} cli=${cli} (runtime wrapper does not need these)`);
 	process.exit(0);
 }
 
 if (action === "apply") {
-	if (main.status === "unknown") {
-		throw new Error(
-			`dist/main.js does not match Atomic ${packageJson.version}; update the managed patch before continuing`,
-		);
-	}
-	if (main.status === "original" && main.variant) {
-		replaceOnce(mainPath, main.variant.original, main.variant.patched, "dist/main.js");
-	}
-	replaceOnce(cliPath, cliOriginal, cliPatched, "dist/cli.js");
+	applyDist(mainPath, transformMainSource, "dist/main.js");
+	applyDist(cliPath, transformCliSource, "dist/cli.js");
 	ensureThemes();
 	ensureSettingsOptOut();
 	console.log(`Atomic ${packageJson.version} Grok UI patch applied`);
@@ -215,8 +238,9 @@ if (action === "apply") {
 		console.log(`Atomic theme linked: ${themeTargetFor(source)}`);
 	}
 	console.log(`Durable settings opt-out written: ${settingsPath}`);
-	console.log("Set ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION=0 to temporarily restore isolation.");
-	console.log("Re-run `npm run atomic:patch` after `atomic update` (dist patches are replaced).");
+	console.log(`Pi theme copies excluded: ${managedPiThemeExcludes().join(", ")}`);
+	console.log(`Set ${DISABLE_FLAG}=0 to temporarily restore isolation.`);
+	console.log("Later `atomic update` does not need a re-patch when using ~/.atomic/bin/atomic.");
 	process.exit(0);
 }
 
@@ -226,17 +250,7 @@ if (themeSources.some((source) => themeStateFor(source) === "linked")) {
 		if (themeStateFor(source) === "linked") unlinkSync(themeTargetFor(source));
 	}
 }
-if (cli === "patched") replaceOnce(cliPath, cliPatched, cliOriginal, "dist/cli.js");
-if (main.status === "patched" && main.variant) {
-	replaceOnce(mainPath, main.variant.patched, main.variant.original, "dist/main.js");
-} else if (main.status === "patched") {
-	// Patched with a known variant shape but state() already matched — find which
-	const content = readFileSync(mainPath, "utf8");
-	const variant = mainVariants.find((entry) => content.includes(entry.patched));
-	if (!variant) {
-		throw new Error(`dist/main.js is patched but does not match a known rollback pattern`);
-	}
-	replaceOnce(mainPath, variant.patched, variant.original, "dist/main.js");
-}
+revertDist(cliPath, revertCliSource, "dist/cli.js");
+revertDist(mainPath, revertMainSource, "dist/main.js");
 clearSettingsOptOut();
 console.log(`Atomic ${packageJson.version} Grok UI patch rolled back`);

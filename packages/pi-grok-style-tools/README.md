@@ -33,7 +33,7 @@ Then `/reload` in an interactive session.
 
 ### Atomic
 
-Atomic isolates extensions in an RPC child by default, which prevents UI prototype patches and custom editor components from reaching the parent TUI. Apply the managed compatibility patch to run Atomic's interactive engine in-process:
+Atomic isolates extensions in an RPC child by default, which prevents UI prototype patches and custom editor components from reaching the parent TUI. Apply the managed compatibility setup once:
 
 ```bash
 npm run atomic:patch
@@ -42,15 +42,14 @@ npm run atomic:check
 
 What `atomic:patch` does:
 
-1. Patches installed `dist/main.js` / `dist/cli.js` so `ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION=1` disables isolation (supports both `engineEnv.child` Atomic ≥0.9.12 and older env-flag builds).
-2. Writes durable `"interactiveEngineIsolation": false` into `~/.atomic/agent/settings.json` without clobbering theme/packages/other keys (refuses malformed/conflicting values).
-3. Links `grok-dark.json` into `~/.atomic/agent/themes/`.
+1. Installs a wrapper at `~/.atomic/bin/atomic` that disables isolation at runtime (`ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION=1` plus an ESM loader). `atomic update` does not need a re-patch.
+2. Best-effort patches installed `dist/main.js` / `dist/cli.js` so a direct npm-global `atomic` also works until the next Atomic install. This is optional; the wrapper is the durable path.
+3. Writes durable `"interactiveEngineIsolation": false` into `~/.atomic/agent/settings.json` without clobbering theme/packages/other keys (refuses malformed/conflicting values).
+4. Links `grok-dark.json` and `oscura-midnight.json` into `~/.atomic/agent/themes/`, and excludes the same filenames under `~/.pi/agent/themes` so Atomic does not warn about inherited Pi copies.
 
-`atomic:patch` also installs a wrapper at `~/.atomic/bin/atomic` (and prepends that dir to PATH in your shell rc). After `atomic update` / `atomic update --all` / `atomic update self`, the wrapper re-runs the patch automatically. Extension-only or `--models` updates are left alone.
+Open a new shell once so `which atomic` shows `~/.atomic/bin/atomic`.
 
-Open a new shell once so `which atomic` shows `~/.atomic/bin/atomic`. Override the package location with `PI_GROK_STYLE_TOOLS` if you move this repo.
-
-Temporarily restore isolation with `ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION=0 atomic`, or remove the patch + wrapper with `npm run atomic:rollback`.
+Temporarily restore isolation with `ATOMIC_DISABLE_INTERACTIVE_ENGINE_ISOLATION=0 atomic`, or remove the setup with `npm run atomic:rollback`.
 
 Configure the package and `"theme": "grok-dark"` in `~/.atomic/agent/settings.json`.
 

@@ -26,6 +26,7 @@
     "atomic:check": "node ./scripts/patch-atomic-grok-ui.mjs check && node ./scripts/install-atomic-wrapper.mjs check",
     "atomic:rollback": "node ./scripts/patch-atomic-grok-ui.mjs rollback && node ./scripts/install-atomic-wrapper.mjs uninstall",
     "atomic:wrapper": "node ./scripts/install-atomic-wrapper.mjs",
+    "test": "node --test ./scripts/atomic-grok-transform.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
