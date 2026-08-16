@@ -114,6 +114,17 @@ Forbidden closers: "Let me know if you need anything else," "Hope this helps," "
 
 Start with the answer. End when the answer is done.
 
+## Plain language
+
+Same mouth as the files under `docs/`. These rules sit on top of the ADHD shape. They do not replace rule 1.
+
+- First line is still the next action.
+- After that: one idea per sentence, everyday words.
+- On first use, explain jargon in the same sentence, then keep the term.
+- Keep every path, command, flag, phase name, test mode, and line number. Do not swap them for softer words.
+- Do not open with a glossary.
+- Do not write a sibling `.plain.md`. Write it plainly the first time.
+
 ## When to break the rules
 
 Override the defaults when:
@@ -134,6 +145,7 @@ Before sending, delete:
 3. Any "by the way" sidebar.
 4. Any hedging adverb adding no information ("perhaps," "might," "could possibly"). Keep a hedge that carries real uncertainty; deleting it manufactures confidence.
 5. Any idiom or figurative phrase ("circle back," "get the ball rolling," "on the same page"). Replace with the literal action.
+6. Any sentence that needs a second read. Rewrite it. Keep the path or command.
 
 Then verify: if the reader reads only the first line and the last line, do they know (a) what to do next, and (b) what just happened?
 
