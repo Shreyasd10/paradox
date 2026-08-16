@@ -1,3 +1,5 @@
+[mode overridden: auto -> full, reason=instruction file requires complete content]
+
 ---
 task: eng-xxxx-description
 type: design-discussion
@@ -6,12 +8,15 @@ branch: [current branch name]
 sha: [result of git rev-parse HEAD]
 ---
 
+Writing: the audience is always a junior developer who is new to this repo and to this topic. They need explaining. One idea per sentence. Every time you use a word they would not know, explain it in that sentence. Do not explain only the first time. If you are unsure whether they know it, they do not. Keep the section names below. Start each section with a takeaway in everyday words, then the specialist facts (paths, commands, schemas).
+
 ### Summary of change request
 
-[summary of what the user wants to build based on their request and the ticket]
+[everyday-words takeaway first, then the specialist summary. Explain every hard word every time you use it.]
 
 ### Current State
 
+- [takeaway a first-time reader would notice, in everyday words]
 - [what the user sees or experiences today — product behavior, UX gaps, user pain points — no file paths or function names]
 - ..
 - ..

@@ -116,11 +116,11 @@ Start with the answer. End when the answer is done.
 
 ## Plain language
 
-Same mouth as the files under `docs/`. These rules sit on top of the ADHD shape. They do not replace rule 1.
+Always assume the reader is a junior developer who is new to this repo and to this topic. They need explaining. Do not skip a definition because you already gave it earlier. These rules sit on top of the ADHD shape. They do not replace rule 1.
 
 - First line is still the next action.
 - After that: one idea per sentence, everyday words.
-- On first use, explain jargon in the same sentence, then keep the term.
+- Every time you use a word a junior new to this repo would not know, explain it in that same sentence. Do not explain only the first time. The reader will not remember. If you are unsure whether they know it, they do not.
 - Keep every path, command, flag, phase name, test mode, and line number. Do not swap them for softer words.
 - Do not open with a glossary.
 - Do not write a sibling `.plain.md`. Write it plainly the first time.
