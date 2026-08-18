@@ -3,26 +3,24 @@ name: create-technical-design
 description: Only use when the user explicitly invokes this skill by name.
 disable-model-invocation: true
 ---
-
-## Plain language
+## Human writing
 
 Follow this block for every sentence you write in this skill (chat and the file under `docs/`). Canonical copy: [plain-language.md](../../docs/plain-language.md).
 
-Always assume the reader is a junior developer who is new to this repo and to this topic. They need explaining. Do not skip a definition because they might already know the word, or because you already defined it earlier.
-
-Write so that reader can act on the text. Keep every fact a specialist needs to execute.
+Write like a teammate explaining the work across a desk. The reader should hear what a person sees, decides, or does. Do not write a tutorial glossary, an ADR, or a requirements matrix.
 
 These rules apply to chat and to files under `docs/`. They do not replace "lead with the next action."
 
 - Chat: the first line is still the next action (a command, path, or decision). Do not open with a glossary.
-- One idea per sentence. Everyday words where they exist.
-- Short headed sections. A header states the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
-- Every time you use a word a junior new to this repo would not know, explain it in that same sentence. Do not explain only the first time. The reader will not remember. If you are unsure whether they know it, they do not. Bad: `Normalize in wrapToolDefinition.` Good: `Normalize means rewrite the schema into an object with a properties list so providers can advertise it, without changing which arguments are valid. Do that rewrite in wrapToolDefinition.`
-- Do not invent a synonym for a path, command, flag, phase name, test mode, or file name.
-- Keep all of: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats.
-- Simplify wording. Never cut depth, options, or tradeoffs.
+- One idea per sentence. If a sentence has two dashes or three clauses, split it.
+- Everyday words where they exist. Human meaning first, then the machine name: sign-in (`login`), not `the login route`.
+- Headers state the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
+- Keep every fact a specialist needs: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats. Do not invent a synonym for those.
+- Do not cite FR/NFR/ADR/ARC numbers unless the reader must open that file. Prefer `Per the ticket` or `The research doc notes`.
+- Keep full depth. Plain words, not less content.
 - If a sentence needs a second read, rewrite it.
-- Do not write a sibling `.plain.md`. Do not wait for another model to rewrite the reply. Write it plainly the first time.
+- Do not write a sibling `.plain.md`. Write it plainly the first time.
+
 
 # Technical Design Phase
 
@@ -50,6 +48,12 @@ You fully settle and get the user's sign-off on the System Design before you ope
 **Make it read like a document a human designed for other humans.** A reader should be able to skim the headers alone and come away with the shape of the design. Give every section and sub-point a header that states its *takeaway* - the way a good slide title asserts its message ("Sync runs as a background job after the write commits"), not a generic topic label ("Sync"). Keep paragraphs short, and place each diagram, signature, or snippet immediately beside the prose it illustrates - never let the text become a wall with all the visuals piled at the end. Lead with the point, then support it.
 
 **Leverage, not exhaustiveness.** The TDD should let the user decide, align, and re-steer the implementation without loading every detail into their head. Prefer the smallest set of diagrams, signatures, and sketches that reveal the important decisions and tradeoffs.
+
+**Never write a decision log.** Forbidden in the TDD: `Decided D1`, `Decision 1`, date-stamped decision IDs, and appending answers as a changelog. After each resolved decision, rewrite **System Design** or **Program Design** so a reader who never saw the interview can still implement.
+
+**Keep the template's section titles.** The finished TDD must use `System Design`, `Program Design`, `Patterns to Follow`, and optional `What We're Not Doing`. Sub-headers must state a takeaway ("PostgreSQL owns replay state and the audit transaction"), never `D1` or `Persistence`.
+
+**cwd is not the design boundary.** File writes, git, and tools stay in this repository. The TDD may still cover a sibling client or service named by the PRD, ticket, or research. Use documented target architecture when that repo is not checked out. Do not silently drop the client journey because this checkout is the backend.
 
 **Get more context when you need it.** When a decision depends on how the codebase actually works, spawn Agent() calls (codebase-analyzer, codebase-pattern-finder, web-search-researcher, or the library researcher) before presenting options. Fold any new findings back into the research artifact.
 
@@ -88,14 +92,22 @@ Write the doc to `docs/technical-design/YYYY-MM-DD-technical-design-DESCRIPTION.
 
 Today's reality and the target both get expressed inside the System Design and Program Design during the interview (Steps 3 and 5), so the skeleton itself stays empty.
 
-Then respond immediately by opening the System Design phase with the **first system-design question** - at most one short orienting line, then the question. For example:
+Then respond immediately by opening the System Design phase with the **first system-design question** - at most one short orienting line, then the question.
 
-> I've started the TDD. First question: should the new sync run inline in the request, or as a background job after the write commits?
+**Pick the question that unblocks the rest.** If the PRD, ticket, or research names a sibling repository, a separate mobile/web client, or a contract another repo must consume, the first question MUST be design scope. Do not default to this repository because it is cwd. Name the actual sibling from the inputs.
+
+For example, when the work spans repos:
+
+> I've started the TDD. First system-design decision: should this TDD cover the complete cross-repository journey or only this repository?
 >
-> - **Inline** - simplest, but the client waits on the upload...
-> - **Background job** - returns fast, but needs a queue and a retry path...
+> - **End-to-end, cross-repository** — designs the sibling client named in the PRD plus the API and infrastructure here; complete story coverage, but some client details rely on documented target architecture rather than checked-out code.
+> - **This-repo only** — designs only the API and infrastructure in this checkout; more concrete, but leaves the PRD's executable client journey for a separate TDD.
 >
-> I'd lean background job because the upload shouldn't block the response - which way do you want to go?
+> I recommend end-to-end when the ticket asks to complete the story and the PRD defines both client and backend behavior — which scope should the TDD use?
+
+If the work is clearly one component in this repo, ask the highest-leverage in-repo architecture question instead (inline vs background job, sync vs async).
+
+**Stop after that question.** Do not write System Design or Program Design on this turn. Do not invent answers from research or tickets. Wait for the human before continuing.
 </instructions>
 
 <guidance>
@@ -123,6 +135,19 @@ Convey **how the system changes**: what exists today and what's new or different
 **Ask exactly one question per message, walking down each branch of the design tree.** Resolve one decision, let it inform the next, and only then ask the next. Presenting 2-3 options to choose between is still one question - don't stack multiple decisions into one message, and don't append a second question or an "any feedback?".
 
 For each decision: present a single decision with options (as diagrams / signatures / endpoint shapes when that's the clearest form) and your recommendation -> work back and forth until the decision is resolved (clarifying questions and pushback are part of this, not a cue to patch) -> only then re-work the **System Design** section so it absorbs the decision, keeping it one coherent architecture. Reach for a diagram, signature, or sketch whenever it captures the decision best.
+
+**Walk the architecture. Do not batch it.** Grill these as separate questions when they apply. Do not collapse them into one backend dump:
+
+1. Design scope / repo boundary (this-repo vs end-to-end)
+2. How contracts cross that boundary (published OpenAPI artifact, versioning, CI consume) when a sibling client exists
+3. Persistence as real `CREATE TABLE` (or the project's Flyway/Liquibase/ORM form) — not a table sketch in prose
+4. Operational vs immutable store lifecycles (retention, cleanup, what a replay must not duplicate)
+5. Fails-closed pipeline order: what runs first, and what happens if Redis, the database, identity, or the transaction is unavailable — including no partial record
+6. Idempotency, concurrency, and the HTTP status for key reuse with a different fingerprint (prefer `409 Conflict` over `400` for that resource conflict)
+7. Client-facing contract details the PRD already settled: required headers, `Retry-After` scoping, handoff data minimization, client-only forks that must not call the API
+8. Timing or padding if the PRD requires it
+
+When a hash is stored for lookup of a secret-ish identifier such as email, recommend HMAC with a server secret rather than an unspecified hash.
 
 Use the representations in the guidance below; pick the form that makes each decision clearest.
 </instructions>
@@ -162,7 +187,7 @@ CREATE TABLE artifact_sync_status (
   cloud_permalink TEXT
 );
 ```
-If the codebase uses an ORM or a schema-definition library, the equivalent ORM-specific definition may be clearer than raw SQL - use whatever form matches the project.
+If the codebase uses an ORM or a schema-definition library, the equivalent ORM-specific definition may be clearer than raw SQL - use whatever form matches the project. If you catch yourself writing a table sketch in prose (`auth_route_replay` followed by field names), replace it with `CREATE TABLE` or the project's migration form. Name the migration tool when the repo has one (Flyway, Liquibase, Prisma, and so on).
 
 ## HTML artifacts for complex concepts
 
@@ -181,7 +206,20 @@ docs/technical-design/diagram-{description}.html
 <step index="4" name="system-design-review-gate">
 
 <instructions>
-When the cross-component architecture is settled, stop and hand it back for review. Because you've been fleshing it out section-by-section, the user hasn't read it as a whole yet. Say something like:
+When the cross-component architecture is settled, stop and hand it back for review. Because you've been fleshing it out section-by-section, the user hasn't read it as a whole yet.
+
+Before you ask for that review, check all of the following. If any fail, keep interviewing or rewriting - do not call the system design complete:
+- Template YAML frontmatter and section titles are present
+- **System Design** uses takeaway headers and reads as a design, not a `Decided D1` log
+- Repo / client boundary is stated, including sibling repositories the PRD named even when they are not cwd
+- Persistence uses real `CREATE TABLE` or the project's migration/ORM form, not a table sketch
+- Operational vs immutable store lifecycles (retention, cleanup) are separated
+- Fails-closed pipeline order is explicit, with mermaid or ordered steps
+- Idempotency conflict uses `409 Conflict` unless the human chose otherwise
+- Client-facing contract details from the PRD are present when the work has a client journey: required headers, `Retry-After` scoping, handoff data minimization, client-only forks
+- **Program Design** is still empty — that phase has not started
+
+Then say something like:
 
 > I think the system design is complete. Since we've been building it up decision by decision, can you read the **System Design** section top to bottom and confirm it hangs together before we move on to program design?
 
@@ -299,7 +337,15 @@ The same HTML-artifact escape hatch from the System Design step applies here - u
 <step index="6" name="program-design-review-gate">
 
 <instructions>
-When the program design is settled, hand it back for review the same way:
+When the program design is settled, hand it back for review the same way.
+
+Before you ask for that review, check all of the following. If any fail, keep interviewing or rewriting:
+- **Program Design** uses takeaway headers and is not empty
+- At least one call-stack tree, file-tree diff, or component tree is present
+- A dependency-injection map or testing-seam map shows how the risky parts are faked
+- **Patterns to Follow** names existing files in this repo (or the designed sibling) with a short snippet
+
+Then say something like:
 
 > I think the program design is complete too. Can you review the **Program Design** section and confirm the code shape and testing seams look right?
 
@@ -311,6 +357,7 @@ Wait for the user's approval and incorporate any fixes.
 <step index="7" name="wrap-up">
 
 <instructions>
+When both phases are approved, read the final answer template and follow it exactly (it points to the next step - the structure outline): `Read(references/tdd_final_answer_resolved.md)`.
 </instructions>
 
 </step>
@@ -318,3 +365,4 @@ Wait for the user's approval and incorporate any fixes.
 ## Git policy (user-owned)
 
 Never run git checkout/commit/push, worktree mutations, or gh pr mutations. Suggest the exact commands for the user to run themselves.
+

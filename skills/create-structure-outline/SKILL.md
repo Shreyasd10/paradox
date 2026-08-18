@@ -3,26 +3,24 @@ name: create-structure-outline
 description: Only use when the user explicitly invokes this skill by name.
 disable-model-invocation: true
 ---
-
-## Plain language
+## Human writing
 
 Follow this block for every sentence you write in this skill (chat and the file under `docs/`). Canonical copy: [plain-language.md](../../docs/plain-language.md).
 
-Always assume the reader is a junior developer who is new to this repo and to this topic. They need explaining. Do not skip a definition because they might already know the word, or because you already defined it earlier.
-
-Write so that reader can act on the text. Keep every fact a specialist needs to execute.
+Write like a teammate explaining the work across a desk. The reader should hear what a person sees, decides, or does. Do not write a tutorial glossary, an ADR, or a requirements matrix.
 
 These rules apply to chat and to files under `docs/`. They do not replace "lead with the next action."
 
 - Chat: the first line is still the next action (a command, path, or decision). Do not open with a glossary.
-- One idea per sentence. Everyday words where they exist.
-- Short headed sections. A header states the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
-- Every time you use a word a junior new to this repo would not know, explain it in that same sentence. Do not explain only the first time. The reader will not remember. If you are unsure whether they know it, they do not. Bad: `Normalize in wrapToolDefinition.` Good: `Normalize means rewrite the schema into an object with a properties list so providers can advertise it, without changing which arguments are valid. Do that rewrite in wrapToolDefinition.`
-- Do not invent a synonym for a path, command, flag, phase name, test mode, or file name.
-- Keep all of: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats.
-- Simplify wording. Never cut depth, options, or tradeoffs.
+- One idea per sentence. If a sentence has two dashes or three clauses, split it.
+- Everyday words where they exist. Human meaning first, then the machine name: sign-in (`login`), not `the login route`.
+- Headers state the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
+- Keep every fact a specialist needs: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats. Do not invent a synonym for those.
+- Do not cite FR/NFR/ADR/ARC numbers unless the reader must open that file. Prefer `Per the ticket` or `The research doc notes`.
+- Keep full depth. Plain words, not less content.
 - If a sentence needs a second read, rewrite it.
-- Do not write a sibling `.plain.md`. Do not wait for another model to rewrite the reply. Write it plainly the first time.
+- Do not write a sibling `.plain.md`. Write it plainly the first time.
+
 
 # Create Structure Outline
 
@@ -56,7 +54,19 @@ You are creating a phased implementation plan based on research findings and des
 
    Do not run agents in the background - FOREGROUND AGENTS ONLY.
 
-4. **Create a phased implementation plan**:
+4. **Read the visual guidance, then create a phased implementation plan**:
+   - Before creating the outline, read `references/show-me.md`
+   - Use the smallest set of visual views needed for each phase instead of a list of files and changes
+   - Tell the story of each phase in the order that makes it easiest to understand; show files first when ownership gives the needed context, or establish key data structures, SQL tables, or API contracts first when they explain the rest of the change
+   - Treat every visual view and subheading as optional. Choose and order them based on the change rather than a fixed template
+   - It should be written as one human would write to another
+   - Place a short description between visual views so the outline explains why the next shape matters and how it connects to the phase
+   - Use a high-level file change tree when file ownership matters, and use focused views for key data structures, SQL tables, or API contracts when those shapes help explain the phase
+   - Use `diff` blocks for focused changes to existing shapes; use language-specific or `text` blocks to show complete target shapes when they are new, high-level, or clearer without diff notation
+   - Use proper tree glyphs (`├──`, `└──`, and `│`), not ASCII substitutes
+   - In `diff` blocks, start added and changed (`~`) lines with `+`, removed lines with `-`, and unchanged context lines with a space
+   - Add short notes only where they help explain ownership or behavior
+   - Keep the tree small enough to scan. Group related files under their shared directory and omit unchanged paths unless they give needed context
    - Break the work into logical phases
    - Each phase should be independently testable
    - Order phases vertically rather than horizontally - wire everything together in a testable way and then add functionality incrementally
@@ -86,8 +96,8 @@ These are intended to be **illustrative**. Not all work lends itself to this typ
 
 5. **For each phase, specify**:
    - Overview of what's being built
-   - Specific file changes with descriptions
-   - Test file changes if the research found testing patterns for the components being modified (e.g. "add test in `__tests__/foo.test.ts` covering the new behavior")
+   - A compact change outline that shows the relevant file tree, key data structures, SQL tables, API contracts, and tests at the level needed to understand the phase
+   - Test changes if the research found testing patterns for the components being modified (e.g. show `+ foo.test.ts # covers the new behavior` in the tree)
    - Validation approach - how we'll verify the phase works
 
 6. **Create the Implementation Overview section**:
@@ -185,3 +195,4 @@ For every behavior-changing unit in the outline, declare exactly one test mode:
 ## Git policy (user-owned)
 
 Never run git checkout/commit/push, worktree mutations, or gh pr mutations. Suggest the exact commands for the user to run themselves.
+

@@ -44,22 +44,22 @@ sha: [result of git rev-parse HEAD]
 
 ### Solution Details
 
-[Detailed description of the solution with mockups embedded inline]
+[Rewrite this as a cohesive spec after every decision - never a `Decided D1` log. Embed each mockup beside the prose it illustrates.]
 
-#### [Feature/Component 1]
+#### [Takeaway header that states the point, not a topic label]
 
 [Description of this feature]
 
-[if appropriate, mermaid diagram of logic flow or user workflow or business process that demonstrates the "Proposed Solution"]
+[if appropriate, mermaid diagram of the complete user journey]
 
-[if appropriate, inline html mockup]
+[if appropriate, inline html mockup - one visual state per file]
 ```artifact-embed
-docs/prd/
+docs/prd/mockup-{description}.html
 ```
 
 [Explanation of mockup and any behavioral notes]
 
-#### [Feature/Component 2]
+#### [Next takeaway header]
 
 ..
 
@@ -69,4 +69,9 @@ docs/prd/
 
 - [Things that are explicitly out of scope]
 - [Features or behaviors we're intentionally not building]
+- ..
+
+### Deferred to TDD
+
+- [Implementation details that are not product decisions: schemas, storage, API generation, client navigation internals]
 - ..

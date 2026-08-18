@@ -4,6 +4,24 @@ description: "Build or refresh a workspace index and reusable thin repository pr
 disable-model-invocation: true
 ---
 
+## Human writing
+
+Follow this block for every sentence you write in this skill (chat and the file under `docs/`). Canonical copy: [plain-language.md](../../docs/plain-language.md).
+
+Write like a teammate explaining the work across a desk. The reader should hear what a person sees, decides, or does. Do not write a tutorial glossary, an ADR, or a requirements matrix.
+
+These rules apply to chat and to files under `docs/`. They do not replace "lead with the next action."
+
+- Chat: the first line is still the next action (a command, path, or decision). Do not open with a glossary.
+- One idea per sentence. If a sentence has two dashes or three clauses, split it.
+- Everyday words where they exist. Human meaning first, then the machine name: sign-in (`login`), not `the login route`.
+- Headers state the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
+- Keep every fact a specialist needs: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats. Do not invent a synonym for those.
+- Do not cite FR/NFR/ADR/ARC numbers unless the reader must open that file. Prefer `Per the ticket` or `The research doc notes`.
+- Keep full depth. Plain words, not less content.
+- If a sentence needs a second read, rewrite it.
+- Do not write a sibling `.plain.md`. Write it plainly the first time.
+
 # Onboard
 
 Use when workspace profiles are **missing or stale** for multi-repo / unfamiliar brownfield. Skip when thin profiles are fresh and sufficient — go to `create-research` or `create-plan`.
@@ -47,7 +65,7 @@ Write **only** under the chosen path:
 
 `onboard` exclusively owns these coordinator files. Other skills may read them, but must return pointers or findings instead of modifying them.
 
-**Do not** write sibling profiles into the paradox **skill repo** (or any skill-install path) by default. Only if the user explicitly overrides `coordinator_docs` to that location.
+**Do not** write sibling profiles into the my-workflow-2 **skill repo** (or any skill-install path) by default. Only if the user explicitly overrides `coordinator_docs` to that location.
 
 Dispatch `repo-profiler` per selected repo (parallel when possible). Pass `<coordinator_docs>/profiles/` as the profiler output path. Inline fallback on runtimes without subagents.
 
@@ -61,7 +79,7 @@ Profile contents (revision-scoped, thin): stack, topology, conventions, testing 
 
 ### Step 3: One-time migration (if needed)
 
-If `docs/context/workspace-index.md` and/or `docs/context/profiles/*` exist under the paradox (or skill) repo and look like multi-repo coordinator artifacts:
+If `docs/context/workspace-index.md` and/or `docs/context/profiles/*` exist under the my-workflow-2 (or skill) repo and look like multi-repo coordinator artifacts:
 
 1. Complete ask-then-default so `coordinator_docs` is chosen.
 2. Show what will move; ask before delete.

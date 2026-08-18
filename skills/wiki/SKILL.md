@@ -1,66 +1,32 @@
 ---
 name: wiki
-description: "Generate comprehensive codebase documentation for any repository. Produces an interconnected set of markdown pages covering overview, architecture, subsystems, contributing guides, statistics, and history. Read-write on the wiki directory. Resumes from existing survey/plan/pages when present. Subagents must write wiki pages (not research-only notes); falls back to inline work if subagents fail or the runtime has no subagent primitive."
+description: "Generate comprehensive codebase documentation for any repository. Produces an interconnected set of markdown pages covering overview, architecture, subsystems, contributing guides, statistics, and history. Read-write on the wiki directory. Dispatches read-only research agents for survey and deep dives; falls back to inline work if a runtime has no subagent primitive."
 disable-model-invocation: true
 ---
-
-## Plain language
+## Human writing
 
 Follow this block for every sentence you write in this skill (chat and the file under `docs/`). Canonical copy: [plain-language.md](../../docs/plain-language.md).
 
-Always assume the reader is a junior developer who is new to this repo and to this topic. They need explaining. Do not skip a definition because they might already know the word, or because you already defined it earlier.
-
-Write so that reader can act on the text. Keep every fact a specialist needs to execute.
+Write like a teammate explaining the work across a desk. The reader should hear what a person sees, decides, or does. Do not write a tutorial glossary, an ADR, or a requirements matrix.
 
 These rules apply to chat and to files under `docs/`. They do not replace "lead with the next action."
 
 - Chat: the first line is still the next action (a command, path, or decision). Do not open with a glossary.
-- One idea per sentence. Everyday words where they exist.
-- Short headed sections. A header states the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
-- Every time you use a word a junior new to this repo would not know, explain it in that same sentence. Do not explain only the first time. The reader will not remember. If you are unsure whether they know it, they do not. Bad: `Normalize in wrapToolDefinition.` Good: `Normalize means rewrite the schema into an object with a properties list so providers can advertise it, without changing which arguments are valid. Do that rewrite in wrapToolDefinition.`
-- Do not invent a synonym for a path, command, flag, phase name, test mode, or file name.
-- Keep all of: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats.
-- Simplify wording. Never cut depth, options, or tradeoffs.
+- One idea per sentence. If a sentence has two dashes or three clauses, split it.
+- Everyday words where they exist. Human meaning first, then the machine name: sign-in (`login`), not `the login route`.
+- Headers state the takeaway, not a topic label. Bad: `Current State`. Good: `The advertised tool looks like it takes no arguments`.
+- Keep every fact a specialist needs: file paths, commands, flags, phase names, test modes (`tdd`, `characterization-then-tdd`, `exempt`), line numbers, and caveats. Do not invent a synonym for those.
+- Do not cite FR/NFR/ADR/ARC numbers unless the reader must open that file. Prefer `Per the ticket` or `The research doc notes`.
+- Keep full depth. Plain words, not less content.
 - If a sentence needs a second read, rewrite it.
-- Do not write a sibling `.plain.md`. Do not wait for another model to rewrite the reply. Write it plainly the first time.
+- Do not write a sibling `.plain.md`. Write it plainly the first time.
+
 
 # Wiki generation
 
 Read a repository, then produce a set of interconnected documentation pages that explain what the code does and how it fits together. The output is a wiki directory of markdown files plus a meta file that captures the page ordering.
 
 The wiki exclusively owns the agreed wiki directory. It may read existing onboard profiles and deep maps as evidence, but it must not write coordinator profiles or `docs/context/codebase/` map files.
-
-## Speed and resume rules
-
-These rules keep wall-clock down without lowering citation, Mermaid, or coverage quality.
-
-### Resume / continue short path
-
-When the user says "continue", or when a prior wiki run already left usable artifacts, **do not restart from a full survey**.
-
-Detect existing artifacts first:
-
-- survey context (e.g. `/tmp/*wiki*survey*` or an equivalent saved survey doc)
-- page plan (e.g. `/tmp/*wiki*plan*` or an ordered page list)
-- existing files under the wiki directory / `.wiki-meta.json`
-
-Then:
-
-1. Load the existing survey + plan (or reconstruct the missing-page list from `.wiki-meta.json` / planned paths vs files on disk).
-2. **Skip** Step 1 survey and Step 2 planning unless the plan is missing or clearly stale relative to a major repo reshape.
-3. Write **only missing or explicitly requested pages**.
-4. Run Step 6 assembly (link audit + `.wiki-meta.json`) once at the end.
-
-Do not re-orient with broad codebase research when the gap is a known finite page list.
-
-### No research-only fan-out
-
-Subagents exist to **produce wiki page files**.
-
-- Forbidden: spawning a parallel batch of `codebase-analyzer` / locator agents whose only deliverable is notes for the parent to write later.
-- Required: each page-generation subagent receives page paths + briefs + source paths, reads code, and **writes the markdown page(s)** in that assignment.
-- Locator/analyzer may run **inside** a page-writing assignment as private research. They are not a separate wall-clock stage before writing.
-- On `inherit` model failures, `resource_exhausted`, cancel, or any research-only batch that returns no page files: **stop the swarm immediately** and have the orchestrator write the remaining pages inline. Do not wait out retries on notes-only work.
 
 ## 1. Survey the repository
 
@@ -483,7 +449,7 @@ These pages establish the shared vocabulary and architectural context that sub-a
 
 Two groups of sub-agents run in parallel. The orchestrator dispatches from the agent list above.
 
-**4a. Domain pages** — all organizational lens pages (apps, systems, features, packages, primitives). Each sub-agent may chain **`codebase-locator` → `codebase-analyzer` (+ optional `codebase-pattern-finder`)** **inside its own assignment** before writing, but the assignment’s deliverable is the wiki page file(s), not research notes.
+**4a. Domain pages** — all organizational lens pages (apps, systems, features, packages, primitives). Each sub-agent typically chains **`codebase-locator` → `codebase-analyzer` (+ optional `codebase-pattern-finder`)** inside its own context window before writing.
 
 - **Critical pages** get a dedicated sub-agent each. The sub-agent reads the relevant code, writes the page, and autonomously decides whether sub-pages are warranted. If a topic has clearly distinct sub-areas, the agent creates sub-pages (capped at 2 levels: `section/page.md`).
 - **Normal pages** are batched 3-5 per sub-agent, grouped by relatedness (e.g., 3 small packages together, or 2 related features). Batched pages are typically single files without sub-pages.
@@ -543,8 +509,6 @@ Relevant source paths: [specific files/directories to read]
 - Use Mermaid diagrams when they help explain data flows or component relationships
 - Cross-link to related pages listed above instead of re-explaining their topics
 - Write output to [wiki_dir path]
-- Your deliverable is the written page file(s). Do not return research notes for the parent to draft later.
-- If you cannot write the pages, fail fast with a short error; do not spend the turn on notes-only output.
 ```
 
 The **shared context** is the same for all agents — the compact survey document. The **per-page brief** is tailored by the orchestrator during planning. This ensures no sub-agent re-discovers what the survey already found, and no sub-agent explains what another page covers.
