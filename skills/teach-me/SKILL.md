@@ -1,5 +1,5 @@
 ---
-name: show-me
+name: teach-me
 description: Help the user understand the current topic visually with concise diagrams, code-shape sketches, and focused HTML artifacts.
 disable-model-invocation: true
 ---
@@ -22,7 +22,7 @@ These rules apply to chat and to files under `docs/`. They do not replace "lead 
 - Do not write a sibling `.plain.md`. Write it plainly the first time.
 
 
-# Show me
+# Teach me
 
 Help the user understand the current topic of conversation visually. Skip the preamble and keep prose brief. Pick the smallest view that makes the key point clear.
 
@@ -94,7 +94,7 @@ For a file-layout change:
 ```diff
  src/
  ├── commands/
-+│   └── show-me.ts       # expands the slash command
++│   └── teach-me.ts       # expands the slash command
  ├── sessions/
 -└── transport.ts
 +└── transport/
@@ -138,7 +138,7 @@ function expandSkill(command: string): string {
 - For a visual UI, layout, state comparison, or concept too dense for Mermaid, create one focused HTML artifact. Match the product's colors, type, spacing, and components; use real labels and data; support desktop and mobile; then display it inline:
 
 ```artifact-embed
-docs/show-me-{description}.html
+docs/teach-me-{description}.html
 ```
 
 - Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to answer the user's current question.
