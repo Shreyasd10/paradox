@@ -42,12 +42,14 @@ import {
 	Markdown,
 	Spacer,
 	Text,
+	matchesKey,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 	type EditorTheme,
 	type TUI,
 } from "@earendil-works/pi-tui";
+import * as PiTui from "@earendil-works/pi-tui";
 
 import * as Diff from "diff";
 import type { BundledLanguage, BundledTheme } from "shiki";
@@ -75,6 +77,8 @@ const USER_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-user-mes
 const USER_SENT_AT = Symbol.for("pi-grok-style-tools:user-sent-at");
 const USER_MESSAGE_HOST_RENDER = Symbol.for("pi-grok-style-tools:user-message-host-render");
 const UI_NOTIFY_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-ui-notifications-v2");
+const ALT_SCREEN_WHEEL_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-altscreen-wheel-v1");
+const SGR_WHEEL_WITH_EXTRAS = /^\x1b\[<(\d+);(\d+);(\d+)(?:;[^Mm]*)*([Mm])$/;
 const WRAP_MARK = "\uE000";
 const KITTY_IMAGE_PREFIX = "\x1b_G";
 const ITERM2_IMAGE_PREFIX = "\x1b]1337;File=";
@@ -5273,6 +5277,45 @@ function grokPromptChrome(theme: any = getGlobalPiTheme()): {
 	};
 }
 
+function isMouseWheelOrSgrInput(data: string): boolean {
+	return data.includes("\x1b[<") || (data.startsWith("\x1b[M") && data.length >= 6);
+}
+
+function isAtomicTranscriptScrollKey(data: string): boolean {
+	return (
+		matchesKey(data, "pageUp") ||
+		matchesKey(data, "pageDown") ||
+		matchesKey(data, "home") ||
+		matchesKey(data, "end") ||
+		matchesKey(data, "shift+up") ||
+		matchesKey(data, "shift+down")
+	);
+}
+
+/**
+ * Overlay hosts (Atomic, alt-screen pi) own wheel/Page Up. Pi's CustomEditor
+ * returns void and can swallow those before the viewport. Decline them so the
+ * transcript can scroll. Pi main-screen sessions ignore the boolean.
+ */
+function patchAltScreenWheelParsing(): void {
+	const AltScreen = (PiTui as { TuiAltScreen?: { prototype?: Record<string, unknown> } }).TuiAltScreen;
+	const proto = AltScreen?.prototype;
+	if (!proto || proto[ALT_SCREEN_WHEEL_PATCH_FLAG]) return;
+	const original = proto.parseWheelEvent;
+	if (typeof original !== "function") return;
+	proto.parseWheelEvent = function patchedParseWheelEvent(data: string) {
+		const hit = (original as (data: string) => unknown).call(this, data);
+		if (hit) return hit;
+		const sgr = SGR_WHEEL_WITH_EXTRAS.exec(data);
+		if (!sgr) return undefined;
+		const button = Number.parseInt(sgr[1]!, 10);
+		if ((button & 64) === 0) return undefined;
+		const canonical = `\x1b[<${sgr[1]};${sgr[2]};${sgr[3]}${sgr[4]}`;
+		return (original as (data: string) => unknown).call(this, canonical);
+	};
+	proto[ALT_SCREEN_WHEEL_PATCH_FLAG] = true;
+}
+
 class GrokPromptEditor extends CustomEditor {
 	/** Captured from omp's setTopBorderProvider — render below our box, not in the top border. */
 	_grokStatusProvider?: (availableWidth: number) => GrokEditorTopBorder | undefined;
@@ -5282,6 +5325,12 @@ class GrokPromptEditor extends CustomEditor {
 		// Host CustomEditor arity differs (pi vs omp); forward the factory args.
 		super(tui as any, theme as any, keybindings as any);
 		this.#installStatusCapture();
+	}
+
+	handleInput(data: string): boolean {
+		if (isMouseWheelOrSgrInput(data) || isAtomicTranscriptScrollKey(data)) return false;
+		super.handleInput(data);
+		return false;
 	}
 
 	#installStatusCapture(): void {
@@ -5434,6 +5483,7 @@ function installGrokPromptEditor(ctx: { ui?: any; hasUI?: boolean }): void {
 // ===========================================================================
 
 export default function (pi: ExtensionAPI) {
+	patchAltScreenWheelParsing();
 	patchToolExecutionBackgroundSync();
 	patchToolRenderCacheInvalidation();
 	patchContainerParentTracking();
