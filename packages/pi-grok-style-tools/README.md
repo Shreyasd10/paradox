@@ -33,7 +33,32 @@ Then `/reload` in an interactive session.
 
 ### Atomic
 
-Atomic isolates extensions in an RPC child by default, which prevents UI prototype patches and custom editor components from reaching the parent TUI. Apply the managed compatibility setup once:
+Atomic always uses a fullscreen alt-screen. A custom prompt **must** extend
+`CustomEditor` from `@bastani/atomic` (not Pi's) and return
+`super.handleInput(data)` so wheel / Page Up stay on the transcript. This
+package does that automatically: it loads Atomic's host editor when `atomic`
+is running, and only overrides `render()` for the Grok `╭─╮` box.
+
+#### Wheel scroll and mouse reporting
+
+The alt-screen enables SGR mouse reporting on entry, but that can be lost during
+startup. When the terminal is not reporting mouse, the wheel arrives as bare
+`↑`/`↓` keys; Atomic's `CustomEditor` runs those through prompt history and
+returns `false`, so scrolling fills the prompt with past messages instead of
+moving the transcript. On editor mount this package re-asserts the same mouse
+modes pi-tui uses. Set `GROK_TOOLS_FORCE_MOUSE=0` to skip that.
+
+Diagnostics and escape hatches:
+
+| Variable | Effect |
+| --- | --- |
+| `GROK_TOOLS_DEBUG_INPUT=1` | Log editor input, host editor resolution, and mouse-mode writes to `/tmp/grok-input.log` (override with `GROK_TOOLS_DEBUG_LOG`) |
+| `GROK_TOOLS_PROMPT_EDITOR=0` | Keep the Grok renderers but leave the host prompt untouched |
+| `GROK_TOOLS_FORCE_MOUSE=0` | Do not re-assert mouse reporting |
+
+Atomic isolates extensions in an RPC child by default, which prevents UI
+prototype patches and custom editor components from reaching the parent TUI.
+Apply the managed compatibility setup once:
 
 ```bash
 npm run atomic:patch

@@ -34,10 +34,15 @@
     "diff": "^9.0.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
-    "@sinclair/typebox": "*"
-  },
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"@bastani/atomic": "*",
+		"@sinclair/typebox": "*"
+	},
+	"peerDependenciesMeta": {
+		"@bastani/atomic": { "optional": true },
+		"@earendil-works/pi-coding-agent": { "optional": true }
+	},
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.8.0"

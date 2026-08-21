@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { readFile as readFileAsync } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 
@@ -42,14 +43,12 @@ import {
 	Markdown,
 	Spacer,
 	Text,
-	matchesKey,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 	type EditorTheme,
 	type TUI,
 } from "@earendil-works/pi-tui";
-import * as PiTui from "@earendil-works/pi-tui";
 
 import * as Diff from "diff";
 import type { BundledLanguage, BundledTheme } from "shiki";
@@ -77,8 +76,6 @@ const USER_MESSAGE_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-user-mes
 const USER_SENT_AT = Symbol.for("pi-grok-style-tools:user-sent-at");
 const USER_MESSAGE_HOST_RENDER = Symbol.for("pi-grok-style-tools:user-message-host-render");
 const UI_NOTIFY_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-ui-notifications-v2");
-const ALT_SCREEN_WHEEL_PATCH_FLAG = Symbol.for("pi-grok-style-tools:patched-altscreen-wheel-v1");
-const SGR_WHEEL_WITH_EXTRAS = /^\x1b\[<(\d+);(\d+);(\d+)(?:;[^Mm]*)*([Mm])$/;
 const WRAP_MARK = "\uE000";
 const KITTY_IMAGE_PREFIX = "\x1b_G";
 const ITERM2_IMAGE_PREFIX = "\x1b]1337;File=";
@@ -5277,46 +5274,119 @@ function grokPromptChrome(theme: any = getGlobalPiTheme()): {
 	};
 }
 
-function isMouseWheelOrSgrInput(data: string): boolean {
-	return data.includes("\x1b[<") || (data.startsWith("\x1b[M") && data.length >= 6);
+const GROK_DEBUG_INPUT_LOG =
+	process.env.GROK_TOOLS_DEBUG_INPUT === "1" ? (process.env.GROK_TOOLS_DEBUG_LOG ?? "/tmp/grok-input.log") : undefined;
+
+function grokDebug(line: string): void {
+	if (!GROK_DEBUG_INPUT_LOG) return;
+	try {
+		appendFileSync(GROK_DEBUG_INPUT_LOG, `${new Date().toISOString()} ${line}\n`);
+	} catch {
+		/* diagnostics are best-effort */
+	}
 }
 
-function isAtomicTranscriptScrollKey(data: string): boolean {
-	return (
-		matchesKey(data, "pageUp") ||
-		matchesKey(data, "pageDown") ||
-		matchesKey(data, "home") ||
-		matchesKey(data, "end") ||
-		matchesKey(data, "shift+up") ||
-		matchesKey(data, "shift+down")
-	);
+/** Trace DECSET/DECRST traffic so we can see who enables or disables mouse reporting. */
+function grokTraceTerminalModes(tui: unknown): void {
+	if (!GROK_DEBUG_INPUT_LOG) return;
+	const term = (tui as { terminal?: { write?: (s: string) => unknown; __grokTraced?: boolean } })?.terminal;
+	if (!term || typeof term.write !== "function" || term.__grokTraced) return;
+	term.__grokTraced = true;
+	const orig = term.write.bind(term);
+	term.write = (s: string) => {
+		const modes = typeof s === "string" ? s.match(/\x1b\[\?(?:1000|1002|1003|1004|1006|1007|1049)[hl]/g) : null;
+		if (modes) grokDebug(`terminal.write modes=${modes.join("")} stack=${new Error().stack?.split("\n")[2]?.trim()}`);
+		return orig(s);
+	};
+}
+
+const ENABLE_ALL_MOTION_MOUSE = "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h";
+
+const ENABLE_BUTTON_MOTION_MOUSE = "\x1b[?1000h\x1b[?1002h\x1b[?1004h\x1b[?1006h";
+
+/** Multiplexers lag when every pointer move is forwarded; mirror pi-tui's choice. */
+function mouseEnableSequence(): string {
+	const term = process.env.TERM?.toLowerCase() ?? "";
+	const multiplexed =
+		process.env.TMUX !== undefined ||
+		process.env.ZELLIJ !== undefined ||
+		process.env.STY !== undefined ||
+		term.startsWith("tmux") ||
+		term.startsWith("screen");
+	return multiplexed ? ENABLE_BUTTON_MOTION_MOUSE : ENABLE_ALL_MOTION_MOUSE;
 }
 
 /**
- * Overlay hosts (Atomic, alt-screen pi) own wheel/Page Up. Pi's CustomEditor
- * returns void and can swallow those before the viewport. Decline them so the
- * transcript can scroll. Pi main-screen sessions ignore the boolean.
+ * Re-assert SGR mouse reporting after the editor mounts. The alt screen enables
+ * it on entry, but that can be lost during startup — and once the terminal is
+ * not reporting mouse, the wheel arrives as bare arrow keys, which the host
+ * editor consumes as prompt history instead of scrolling the transcript.
+ * Writing the modes again is idempotent, so retry across the startup window.
  */
-function patchAltScreenWheelParsing(): void {
-	const AltScreen = (PiTui as { TuiAltScreen?: { prototype?: Record<string, unknown> } }).TuiAltScreen;
-	const proto = AltScreen?.prototype;
-	if (!proto || proto[ALT_SCREEN_WHEEL_PATCH_FLAG]) return;
-	const original = proto.parseWheelEvent;
-	if (typeof original !== "function") return;
-	proto.parseWheelEvent = function patchedParseWheelEvent(data: string) {
-		const hit = (original as (data: string) => unknown).call(this, data);
-		if (hit) return hit;
-		const sgr = SGR_WHEEL_WITH_EXTRAS.exec(data);
-		if (!sgr) return undefined;
-		const button = Number.parseInt(sgr[1]!, 10);
-		if ((button & 64) === 0) return undefined;
-		const canonical = `\x1b[<${sgr[1]};${sgr[2]};${sgr[3]}${sgr[4]}`;
-		return (original as (data: string) => unknown).call(this, canonical);
-	};
-	proto[ALT_SCREEN_WHEEL_PATCH_FLAG] = true;
+function grokRestoreMouseReporting(tui: unknown): void {
+	if (process.env.GROK_TOOLS_FORCE_MOUSE === "0") return;
+	const term = (tui as { terminal?: { write?: (s: string) => unknown } })?.terminal;
+	if (!term || typeof term.write !== "function") return;
+	const sequence = mouseEnableSequence();
+	for (const delay of [0, 250, 1000]) {
+		const timer = setTimeout(() => {
+			try {
+				term.write?.(sequence);
+				grokDebug(`re-asserted mouse reporting (+${delay}ms)`);
+			} catch (err) {
+				grokDebug(`mouse re-assert failed: ${String(err)}`);
+			}
+		}, delay);
+		timer.unref?.();
+	}
 }
 
-class GrokPromptEditor extends CustomEditor {
+/** Escape hatch: run the extension's renderers without replacing the host prompt. */
+function grokPromptEditorEnabled(): boolean {
+	const flag = process.env.GROK_TOOLS_PROMPT_EDITOR;
+	return flag !== "0" && flag !== "false";
+}
+
+const ATOMIC_EDITOR_MARKERS = [
+	"tui.editor.historyPrevious",
+	"submittedDraftSnapshot",
+	"isPhysicalEscape",
+];
+
+function editorLooksLikeAtomic(Editor: unknown): boolean {
+	const src = String((Editor as { prototype?: { handleInput?: unknown } })?.prototype?.handleInput ?? "");
+	return ATOMIC_EDITOR_MARKERS.some((marker) => src.includes(marker));
+}
+
+/** Prefer Atomic's host CustomEditor so wheel/Page Up stay on the 0.84 viewport. */
+function resolveHostCustomEditor(): typeof CustomEditor {
+	if (editorLooksLikeAtomic(CustomEditor)) return CustomEditor;
+	const raw = process.argv[1];
+	let resolved = (raw ?? "").replace(/\\/g, "/");
+	if (raw) {
+		try {
+			resolved = realpathSync(raw).replace(/\\/g, "/");
+		} catch {
+			/* keep argv path */
+		}
+	}
+	const needle = "/@bastani/atomic";
+	const at = resolved.indexOf(needle);
+	if (at !== -1) {
+		const atomicRoot = resolved.slice(0, at + needle.length);
+		try {
+			const req = createRequire(join(atomicRoot, "package.json"));
+			const mod = req(join(atomicRoot, "dist/index.js")) as { CustomEditor?: typeof CustomEditor };
+			if (typeof mod?.CustomEditor === "function") return mod.CustomEditor;
+		} catch {
+			/* Pi fallback */
+		}
+	}
+	return CustomEditor;
+}
+
+function createGrokPromptEditorClass(HostEditor: typeof CustomEditor) {
+	return class GrokPromptEditor extends HostEditor {
 	/** Captured from omp's setTopBorderProvider — render below our box, not in the top border. */
 	_grokStatusProvider?: (availableWidth: number) => GrokEditorTopBorder | undefined;
 	_grokStatusEager?: GrokEditorTopBorder;
@@ -5328,10 +5398,18 @@ class GrokPromptEditor extends CustomEditor {
 	}
 
 	handleInput(data: string): boolean {
-		if (isMouseWheelOrSgrInput(data) || isAtomicTranscriptScrollKey(data)) return false;
-		super.handleInput(data);
-		return false;
+		if (GROK_DEBUG_INPUT_LOG && !this._grokLoggedMouseState) {
+			this._grokLoggedMouseState = true;
+			const t = (this as any).tui;
+			grokDebug(`live tui=${t?.constructor?.name} mouseEnabled=${String(t?.mouseEnabled)} altScreenActive=${String(t?.altScreenActive)}`);
+		}
+		const result = super.handleInput(data);
+		const handled = typeof result === "boolean" ? result : false;
+		if (GROK_DEBUG_INPUT_LOG) grokDebug(`handleInput ${JSON.stringify(data)} -> ${handled}`);
+		return handled;
 	}
+
+	_grokLoggedMouseState = false;
 
 	#installStatusCapture(): void {
 		const self = this as any;
@@ -5462,12 +5540,31 @@ class GrokPromptEditor extends CustomEditor {
 
 		return finish(out);
 	}
+	};
 }
 
 function installGrokPromptEditor(ctx: { ui?: any; hasUI?: boolean }): void {
-	if (!ctx?.hasUI || typeof ctx.ui?.setEditorComponent !== "function") return;
+	if (!grokPromptEditorEnabled()) {
+		grokDebug("prompt editor disabled via GROK_TOOLS_PROMPT_EDITOR");
+		return;
+	}
+	if (!ctx?.hasUI || typeof ctx.ui?.setEditorComponent !== "function") {
+		grokDebug(`no editor slot: hasUI=${String(ctx?.hasUI)} setEditorComponent=${typeof ctx?.ui?.setEditorComponent}`);
+		return;
+	}
 	try {
+		const HostEditor = resolveHostCustomEditor();
+		grokDebug(`host editor=${HostEditor.name} atomic=${editorLooksLikeAtomic(HostEditor)} argv1=${process.argv[1]}`);
+		const GrokPromptEditor = createGrokPromptEditorClass(HostEditor);
 		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: any) => {
+			const t = tui as any;
+			grokDebug(
+				`editor factory: tui=${t?.constructor?.name} mouseEnabled=${String(t?.mouseEnabled)} ` +
+					`altScreenActive=${String(t?.altScreenActive)} TERM=${process.env.TERM} ` +
+					`TERM_PROGRAM=${process.env.TERM_PROGRAM} TMUX=${process.env.TMUX === undefined ? "unset" : "set"}`,
+			);
+			grokTraceTerminalModes(tui);
+			grokRestoreMouseReporting(tui);
 			const editor = new GrokPromptEditor(tui, theme, keybindings);
 			if ("promptPrefix" in editor) (editor as any).promptPrefix = "";
 			if (typeof (editor as any).setPaddingX === "function") (editor as any).setPaddingX(0);
@@ -5475,7 +5572,9 @@ function installGrokPromptEditor(ctx: { ui?: any; hasUI?: boolean }): void {
 			(editor as any)._piTheme = ctx.ui?.theme ?? getGlobalPiTheme();
 			return editor;
 		});
-	} catch { /* noop */ }
+	} catch (err) {
+		grokDebug(`install failed: ${String(err)}`);
+	}
 }
 
 // ===========================================================================
@@ -5483,7 +5582,6 @@ function installGrokPromptEditor(ctx: { ui?: any; hasUI?: boolean }): void {
 // ===========================================================================
 
 export default function (pi: ExtensionAPI) {
-	patchAltScreenWheelParsing();
 	patchToolExecutionBackgroundSync();
 	patchToolRenderCacheInvalidation();
 	patchContainerParentTracking();
